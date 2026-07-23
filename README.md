@@ -1,0 +1,226 @@
+# Local Badge Remover MVP
+
+A local-only browser tool that detects likely identification badges, lets a
+reviewer correct the masks, and saves redacted copies without changing the
+original images.
+
+## Start the app
+
+From this folder:
+
+```bash
+npm run setup
+npm start
+```
+
+Open:
+
+```text
+http://127.0.0.1:4173/
+```
+
+`npm run setup` installs the JavaScript dependencies, downloads the pinned
+local models, verifies their SHA-256 checksums, and builds the app. `npm start`
+serves the already-built app only on the local loopback interface.
+
+Version 0.10.0 verifies that the browser and local image-processing server are
+the same release before enabling work. On Mac, launching a newly unpacked
+release no longer reuses an older server solely because it has the same page
+title.
+
+Do not use `npm run dev` for normal photo processing. The packaged local
+runtime is the supported MVP path.
+
+## Model download
+
+Version 0.10.0 uses the Apache-2.0 quantized ONNX conversion of
+[`Grounding DINO Tiny`](https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX).
+Enhanced mode adds the quantized Transformers.js conversion of
+[`CLIP ViT-B/32`](https://huggingface.co/Xenova/clip-vit-base-patch32) to
+reject likely shirt details and signs. Both run locally and do not require
+Python, Ollama, or a network connection after packaging.
+
+Pinned model file:
+
+```text
+https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX/resolve/ff690b0a8050566c290287545bd059350f3e9096/onnx/model_quantized.onnx?download=true
+```
+
+Expected destination:
+
+```text
+public/models/onnx-community/grounding-dino-tiny-ONNX/onnx/model_quantized.onnx
+```
+
+Expected SHA-256:
+
+```text
+70bf2d3310d1ae73769c96a71e00cbf2861eb33a1f4d97d84a108a7bf02c03c9
+```
+
+Pinned CLIP revision:
+`d15189d7028b43f1d3e65039190477f6af591c2a`  
+CLIP model SHA-256:
+`0898a3facfdb27f0a041e57649b4989cfd094e4a0040d6ae75ed69917dfc7328`
+
+The recommended route is:
+
+```bash
+npm run prepare:model
+```
+
+That script downloads both models plus their small configuration/tokenizer
+files and refuses to continue if either checksum does not match. If direct
+downloading is blocked, download the pinned file through an approved route,
+copy it to the expected destination, then rerun `npm run prepare:model` to
+verify it and obtain any missing small files.
+
+## Workflow
+
+1. Select a folder of JPEG, PNG, 8-bit single-page TIFF, WebP, AVIF, or
+   HEIC/HEIF images.
+2. Load the local models.
+3. Run detection.
+4. Grounding DINO runs one period-delimited grounding prompt over each image.
+5. With **Enhanced torso rescue** enabled, the app detects people, searches
+   enlarged upper-torso crops, and uses CLIP to reject likely non-badges.
+6. The local corner fitter refines strong badge edges and keeps a rectangle
+   when the fit is uncertain.
+7. Review the four-image pages with **Previous page** and **Next page**.
+8. Drag over a missed badge to add a mask.
+9. Click a mask and drag its four corner handles to match badge perspective.
+10. Adjust **Edge feather** to soften the mask boundary.
+11. Click a false mask and use **Remove selected** or the Delete key.
+12. Choose **Export all to folder** and select a destination once.
+
+Every export creates a unique
+`badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` subfolder containing redacted
+copies, an adjacent `.metadata.mie` metadata archive for each copy, plus
+`badge-removal-manifest.json` and
+`badge-training-annotations.coco.json`. The timestamp and random run ID prevent
+a new export from reusing or overwriting an older run folder. Source
+subfolders are preserved inside each run so duplicate filenames from different
+folders do not collide.
+
+Original images remain read-only and are deliberately not copied into the
+output. Keeping the originals out avoids duplicating unredacted sensitive
+pixels and reduces storage use. To revise a run, click **Import previous run**,
+choose its `badge-removal-manifest.json`, and reselect the original source
+folder. The app restores final reviewed masks and run settings by relative path
+and verifies the source file size before applying them. It can also restore a
+run created by an earlier app version that contains compatible reviewed masks.
+
+The COCO file records final reviewed quadrilaterals and COCO bounding boxes for
+later local model training; it does not train or alter the bundled model during
+use.
+
+JPEG, PNG, TIFF, WebP, and AVIF retain their format. HEIC/HEIF input is
+exported as TIFF with `-redacted-from-heic` or `-redacted-from-heif` in its
+name because portable HEIC encoding is not included. Writable EXIF, IPTC, XMP,
+copyright, camera, and ICC-profile metadata is transferred. Orientation is
+normalized after pixels are rotated. Embedded thumbnails and previews are
+intentionally excluded because they could contain the original visible badge.
+The MIE archive preserves the remaining source metadata for audit/recovery.
+
+## Local-only controls
+
+- Model loading from remote services is disabled in application code.
+- The model, tokenizer, and ONNX runtime files are bundled locally.
+- Content Security Policy allows network reads only from the local app origin
+  and local in-memory `blob:` image URLs.
+- The server binds to `127.0.0.1`, not the LAN.
+- There are no analytics, telemetry, accounts, or cloud APIs.
+- Bulk export uses the folder-write API in Microsoft Edge or Google Chrome and
+  writes files sequentially after one destination-folder choice.
+- Detection and export use a sequential queue. Only four bounded 1200-pixel
+  review previews are retained at once; full-resolution sources are opened one
+  at a time for detection and export.
+
+The one-time setup step does contact npm and Hugging Face to download public
+software/model files. Image processing after setup is local.
+
+## Portable macOS and Windows ZIPs
+
+To create both offline packages from the same production build:
+
+```bash
+npm run package:all
+```
+
+Individual packages can also be created:
+
+```bash
+npm run package:mac
+npm run package:windows
+```
+
+Each ZIP and SHA-256 checksum is written to `releases/`. Both packages contain
+the same built app, model, and five synthetic demo images. The platform bundle
+adds only its matching launcher and official Node runtime:
+
+- macOS Apple silicon: `Badge Remover.app`
+- Windows x64: `Start Badge Remover.cmd`
+
+Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
+The Mac app has an ad-hoc integrity signature, but it is not Developer ID
+signed or Apple notarized. Testers may need to right-click the app and choose
+Open once. A warning-free Mac package requires an Apple Developer certificate
+and notarization. Managed computers may require normal organizational approval
+or software distribution. Production deployment should go through the
+applicable ORNL security and software-management review.
+
+## MVP limitations
+
+- Human review is required.
+- Enhanced mode on the reviewed 18-image local regression currently measures
+  75.6% automatic badge recall and 72.3% mask precision. It is useful as a first-pass reviewer,
+  not as an unattended compliance control. White/translucent cards and distant
+  small badges remain the main miss cases.
+- Automatic detections begin with an angle-aware four-corner edge fit.
+  Reviewers can move all four corners independently to conform the redaction
+  to a tilted badge. Uncertain, weak, self-intersecting, or unsafe geometry
+  falls back to the original detection rectangle.
+- The corner fitter does not use a second cloud or generative model. It scores
+  continuous local edges inside the Grounding DINO detection and verifies that the
+  expanded fitted mask still covers the original detection.
+- Feathering softens the transition at the expanded mask boundary. Keep enough
+  mask expansion to cover all sensitive badge pixels.
+- The bundled model is fixed during inference. Reviewed corrections are saved
+  as local annotations but do not update the model automatically.
+- The frozen five-image synthetic browser test found all 11 visible badge
+  regions with 11 complete boxes and no false boxes. This small synthetic
+  result does not predict accuracy on cleared production photographs.
+- The queued design avoids loading every full-resolution image at once, but a
+  representative hundreds/thousands-image soak test is still required before
+  production use.
+- Enhanced mode is substantially slower because it runs a person pass, one
+  badge pass per torso, and a classifier on rescue candidates. Turn it off for
+  the faster v0.9-style full-image pass.
+- RAW files, multi-page images, and images above 8 bits per channel are
+  rejected instead of being silently developed, flattened, or reduced.
+- HEIC/HEIF output is TIFF, not HEIC/HEIF.
+- Pixel edits necessarily re-encode the image; this is metadata-preserving,
+  not byte-for-byte image preservation.
+- No Lightroom catalog or Photoshop integration yet.
+- Synthetic images are useful for pipeline testing but do not establish
+  production accuracy.
+
+See [TEST-REPORT.md](TEST-REPORT.md) for the frozen demo result.
+
+## Local real-photo regression
+
+Place approved local test images in
+`test-data/local-badge-evaluation/`. That directory and generated
+`test-output/` artifacts are git-ignored so sensitive pixels are not packaged.
+The reviewed normalized badge centers live in
+`test-data/badge-ground-truth.json`.
+
+Run the same enhanced local path used by the app:
+
+```bash
+npm run test:badge-production
+```
+
+Each run creates a unique folder under `test-output/` containing a JSON report,
+per-image overlays, and a contact sheet. Green circles are covered reference
+points; red circles are missed reference points.

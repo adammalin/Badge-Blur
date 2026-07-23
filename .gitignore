@@ -1,0 +1,11 @@
+node_modules/
+dist/
+releases/
+.cache/
+public/models/
+public/vendor/
+benchmark-output/
+test-data/local-badge-evaluation/
+test-output/
+.DS_Store
+badge-remover-output/

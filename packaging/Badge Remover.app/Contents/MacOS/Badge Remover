@@ -1,0 +1,102 @@
+#!/bin/zsh
+
+set -u
+
+APP_MACOS_DIR="${0:A:h}"
+PACKAGE_ROOT="${APP_MACOS_DIR:h}/Resources"
+RUNTIME_NODE="$PACKAGE_ROOT/runtime/node"
+SERVER_SCRIPT="$PACKAGE_ROOT/scripts/serve.mjs"
+START_PORT="${BADGE_REMOVER_PORT:-4173}"
+MAX_PORT=$((START_PORT + 20))
+LOG_FILE="${TMPDIR:-/tmp}/local-badge-remover.log"
+
+show_error() {
+  /usr/bin/osascript -e \
+    "display dialog \"$1\" with title \"Badge Remover\" buttons {\"OK\"} default button \"OK\" with icon stop"
+}
+
+if [[ ! -x "$RUNTIME_NODE" || ! -f "$SERVER_SCRIPT" ]]; then
+  show_error "Badge Remover.app is incomplete. Download and unzip a fresh copy."
+  exit 1
+fi
+
+PACKAGE_VERSION="$(
+  "$RUNTIME_NODE" -e \
+    'console.log(require(process.argv[1]).version)' \
+    "$PACKAGE_ROOT/package.json"
+)"
+
+is_badge_remover() {
+  /usr/bin/curl --silent --fail --max-time 1 "${1}api/status" 2>/dev/null |
+    /usr/bin/grep --quiet "\"appVersion\":\"${PACKAGE_VERSION}\""
+}
+
+open_browser() {
+  if [[ -d "/Applications/Google Chrome.app" ]]; then
+    /usr/bin/open -a "Google Chrome" "$1"
+  elif [[ -d "/Applications/Microsoft Edge.app" ]]; then
+    /usr/bin/open -a "Microsoft Edge" "$1"
+  else
+    /usr/bin/open "$1"
+  fi
+}
+
+port="$START_PORT"
+while (( port <= MAX_PORT )); do
+  url="http://127.0.0.1:${port}/"
+
+  if is_badge_remover "$url"; then
+    open_browser "$url"
+    exit 0
+  fi
+
+  if ! /usr/bin/nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
+    break
+  fi
+
+  (( port += 1 ))
+done
+
+if (( port > MAX_PORT )); then
+  show_error "Badge Remover could not find an available local port."
+  exit 1
+fi
+
+export BADGE_REMOVER_PORT="$port"
+"$RUNTIME_NODE" "$SERVER_SCRIPT" >"$LOG_FILE" 2>&1 &
+server_pid=$!
+
+cleanup() {
+  if kill -0 "$server_pid" 2>/dev/null; then
+    kill "$server_pid" 2>/dev/null
+    wait "$server_pid" 2>/dev/null
+  fi
+}
+trap cleanup EXIT INT TERM HUP
+
+ready=0
+for attempt in {1..100}; do
+  if is_badge_remover "$url"; then
+    ready=1
+    break
+  fi
+
+  if ! kill -0 "$server_pid" 2>/dev/null; then
+    break
+  fi
+
+  sleep 0.1
+done
+
+if (( ready == 0 )) && ! kill -0 "$server_pid" 2>/dev/null; then
+  show_error "Badge Remover could not start. Diagnostic details were saved to $LOG_FILE."
+  exit 1
+fi
+
+if (( ready == 0 )); then
+  echo "Launcher health check was inconclusive; the server is still running." >>"$LOG_FILE"
+  echo "Opening the local app so the browser can complete the connection." >>"$LOG_FILE"
+fi
+
+open_browser "$url"
+wait "$server_pid"

@@ -1,0 +1,41 @@
+{
+  "name": "local-badge-remover",
+  "version": "0.10.4",
+  "private": true,
+  "description": "Local-only browser MVP for detecting and redacting identification badges.",
+  "type": "module",
+  "scripts": {
+    "prepare:model": "bash scripts/download-grounding-dino-model.sh && bash scripts/download-clip-classifier.sh",
+    "prepare:wasm": "node scripts/copy-wasm.mjs",
+    "prepare": "npm run prepare:model && npm run prepare:wasm",
+    "dev": "vite --host 127.0.0.1",
+    "setup": "npm install && npm run build",
+    "start": "node scripts/serve.mjs",
+    "build": "vite build",
+    "benchmark:models": "node scripts/benchmark-models.mjs",
+    "test:corner-fit": "node scripts/test-corner-fit.mjs",
+    "test:run-storage": "node scripts/test-run-storage.mjs",
+    "test:badge-set": "node scripts/evaluate-badge-set.mjs",
+    "test:badge-production": "node scripts/evaluate-badge-set.mjs --torso-guided --skip-redaction",
+    "package:mac": "zsh scripts/package-portable.sh",
+    "package:windows": "zsh scripts/package-windows.sh",
+    "package:all": "zsh scripts/package-all.sh",
+    "package:portable": "zsh scripts/package-portable.sh",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "exiftool-vendored": "^37.0.0",
+    "heic-decode": "^2.1.0",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "vite": "7.3.6"
+  },
+  "overrides": {
+    "sharp": "0.35.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
