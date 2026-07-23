@@ -23,7 +23,7 @@ http://127.0.0.1:4173/
 local models, verifies their SHA-256 checksums, and builds the app. `npm start`
 serves the already-built app only on the local loopback interface.
 
-Version 0.10.0 verifies that the browser and local image-processing server are
+Version 0.11.0 verifies that the browser and local image-processing server are
 the same release before enabling work. On Mac, launching a newly unpacked
 release no longer reuses an older server solely because it has the same page
 title.
@@ -33,7 +33,7 @@ runtime is the supported MVP path.
 
 ## Model download
 
-Version 0.10.0 uses the Apache-2.0 quantized ONNX conversion of
+Version 0.11.0 uses the Apache-2.0 quantized ONNX conversion of
 [`Grounding DINO Tiny`](https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX).
 Enhanced mode adds the quantized Transformers.js conversion of
 [`CLIP ViT-B/32`](https://huggingface.co/Xenova/clip-vit-base-patch32) to
@@ -79,22 +79,26 @@ verify it and obtain any missing small files.
 
 1. Select a folder of JPEG, PNG, 8-bit single-page TIFF, WebP, AVIF, or
    HEIC/HEIF images.
-2. Load the local models.
-3. Run detection.
+2. Wait for the bundled local models to load automatically.
+3. Choose **Start batch**.
 4. Grounding DINO runs one period-delimited grounding prompt over each image.
 5. With **Enhanced torso rescue** enabled, the app detects people, searches
    enlarged upper-torso crops, and uses CLIP to reject likely non-badges.
 6. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
-7. Review the four-image pages with **Previous page** and **Next page**.
+7. Review the centered image in the left-to-right carousel. Its immediate
+   neighbors remain visible as smaller previews.
 8. Drag over a missed badge to add a mask.
 9. Click a mask and drag its four corner handles to match badge perspective.
 10. Adjust **Edge feather** to soften the mask boundary.
 11. Click a false mask and use **Remove selected** or the Delete key.
-12. Choose **Export all to folder** and select a destination once.
+12. Toggle **Before · edit masks** and **After · exported** to compare the
+    current mask with its redacted output.
 
-Every export creates a unique
-`badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` subfolder containing redacted
+Each processed image is saved progressively into
+`source-folder/exports/badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` by default.
+**Choose different export folder** overrides that destination for the next
+run. Every run folder contains redacted
 copies, an adjacent `.metadata.mie` metadata archive for each copy, plus
 `badge-removal-manifest.json` and
 `badge-training-annotations.coco.json`. The timestamp and random run ID prevent
@@ -131,8 +135,9 @@ The MIE archive preserves the remaining source metadata for audit/recovery.
 - The server binds to `127.0.0.1`, not the LAN.
 - There are no analytics, telemetry, accounts, or cloud APIs.
 - Bulk export uses the folder-write API in Microsoft Edge or Google Chrome and
-  writes files sequentially after one destination-folder choice.
-- Detection and export use a sequential queue. Only four bounded 1200-pixel
+  writes files sequentially into the source folder's `exports` subfolder
+  unless the reviewer chooses another destination.
+- Detection and export use a sequential queue. Only three bounded 1200-pixel
   review previews are retained at once; full-resolution sources are opened one
   at a time for detection and export.
 

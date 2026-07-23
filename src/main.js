@@ -19,7 +19,7 @@ import {
   sourceRootName,
 } from "./run-storage.js";
 
-const APP_VERSION = "0.10.4";
+const APP_VERSION = "0.11.0";
 const IMAGE_API_VERSION = 3;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -32,7 +32,7 @@ const SUPPORTED_EXTENSIONS = new Set([
   "heic",
   "heif",
 ]);
-const PAGE_SIZE = 4;
+const CAROUSEL_RADIUS = 1;
 
 env.localModelPath = "/models/";
 env.allowRemoteModels = false;
@@ -40,7 +40,9 @@ env.allowLocalModels = true;
 env.backends.onnx.wasm.wasmPaths = "/vendor/onnx/";
 
 const elements = {
+  chooseSourceButton: document.querySelector("#chooseSourceButton"),
   folderInput: document.querySelector("#folderInput"),
+  sourceFolderLabel: document.querySelector("#sourceFolderLabel"),
   labelsInput: document.querySelector("#labelsInput"),
   enhancedInput: document.querySelector("#enhancedInput"),
   thresholdInput: document.querySelector("#thresholdInput"),
@@ -54,6 +56,10 @@ const elements = {
   loadModelButton: document.querySelector("#loadModelButton"),
   runAllButton: document.querySelector("#runAllButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
+  changeExportButton: document.querySelector("#changeExportButton"),
+  resetExportButton: document.querySelector("#resetExportButton"),
+  exportDestination: document.querySelector("#exportDestination"),
+  batchTime: document.querySelector("#batchTime"),
   importRunButton: document.querySelector("#importRunButton"),
   runManifestInput: document.querySelector("#runManifestInput"),
   modelStatus: document.querySelector("#modelStatus"),
@@ -74,10 +80,18 @@ let detector = null;
 let rescueClassifier = null;
 let items = [];
 let running = false;
-let currentPage = 0;
+let activeIndex = 0;
 let pageRenderToken = 0;
 let importedManifest = null;
 let serverReady = false;
+let sourceDirectoryHandle = null;
+let customExportDirectoryHandle = null;
+let activeRun = null;
+let batchStartedAt = null;
+let batchTimer = null;
+let lastBatchDurationMs = null;
+let exportQueue = Promise.resolve();
+const itemExportTimers = new Map();
 
 elements.thresholdInput.addEventListener("input", () => {
   elements.thresholdOutput.value = Number(elements.thresholdInput.value).toFixed(2);
@@ -92,17 +106,27 @@ elements.strengthInput.addEventListener("input", () => {
 elements.featherInput.addEventListener("input", () => {
   elements.featherOutput.value = `${elements.featherInput.value}%`;
 });
+for (const input of [
+  elements.paddingInput,
+  elements.strengthInput,
+  elements.featherInput,
+]) {
+  input.addEventListener("change", () => scheduleAllEditedExports());
+}
+elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
 elements.runAllButton.addEventListener("click", runAll);
 elements.exportAllButton.addEventListener("click", exportAll);
+elements.changeExportButton.addEventListener("click", chooseCustomExportFolder);
+elements.resetExportButton.addEventListener("click", useSourceExportFolder);
 elements.importRunButton.addEventListener("click", () => {
   elements.runManifestInput.value = "";
   elements.runManifestInput.click();
 });
 elements.runManifestInput.addEventListener("change", importPreviousRun);
-elements.previousPageButton.addEventListener("click", () => changePage(-1));
-elements.nextPageButton.addEventListener("click", () => changePage(1));
+elements.previousPageButton.addEventListener("click", () => changeCarousel(-1));
+elements.nextPageButton.addEventListener("click", () => changeCarousel(1));
 if (typeof window.showDirectoryPicker !== "function") {
   elements.exportCompatibility.hidden = false;
 }
@@ -137,6 +161,7 @@ async function verifyLocalServer() {
     }
     serverReady = true;
     updateButtons();
+    await loadModel();
   } catch (error) {
     console.error("Local server compatibility check failed.", error);
     serverReady = false;
@@ -150,15 +175,77 @@ async function verifyLocalServer() {
   }
 }
 
+async function chooseSourceFolder() {
+  if (!serverReady || running) return;
+  if (typeof window.showDirectoryPicker !== "function") {
+    elements.folderInput.click();
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({
+      id: "badge-remover-source",
+      mode: "readwrite",
+    });
+    const selected = await collectDirectoryImages(handle);
+    sourceDirectoryHandle = handle;
+    customExportDirectoryHandle = null;
+    activeRun = null;
+    elements.sourceFolderLabel.textContent =
+      `${handle.name} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
+    updateExportDestination();
+    await setSelectedFiles(selected);
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.error(error);
+      showProgress(`Could not open the source folder: ${error.message}`, 0);
+    }
+  }
+}
+
+async function collectDirectoryImages(directory, prefix = "") {
+  const selected = [];
+  for await (const [name, handle] of directory.entries()) {
+    if (handle.kind === "directory") {
+      if (name.toLowerCase() === "exports") continue;
+      selected.push(
+        ...(await collectDirectoryImages(handle, `${prefix}${name}/`)),
+      );
+      continue;
+    }
+    if (!SUPPORTED_EXTENSIONS.has(fileExtension(name))) continue;
+    selected.push({
+      file: await handle.getFile(),
+      relativePath: `${prefix}${name}`,
+    });
+  }
+  return selected.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
 async function loadSelectedFiles(event) {
-  releaseItems();
+  sourceDirectoryHandle = null;
+  customExportDirectoryHandle = null;
+  activeRun = null;
   const selected = [...event.target.files]
     .filter((file) => SUPPORTED_EXTENSIONS.has(fileExtension(file.name)))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((file) => ({
+      file,
+      relativePath: fallbackRelativePath(file),
+    }))
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  elements.sourceFolderLabel.textContent =
+    `${sourceRootName(selected[0]?.file) || "Selected folder"} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
+  updateExportDestination();
+  await setSelectedFiles(selected);
+}
 
-  items = selected.map((file, index) => ({
+async function setSelectedFiles(selected) {
+  releaseItems();
+  for (const timer of itemExportTimers.values()) clearTimeout(timer);
+  itemExportTimers.clear();
+  items = selected.map(({ file, relativePath }, index) => ({
     id: `image-${index}-${crypto.randomUUID()}`,
     file,
+    relativePath,
     width: null,
     height: null,
     imageInfo: null,
@@ -168,13 +255,22 @@ async function loadSelectedFiles(event) {
     boxes: [],
     modelBoxes: [],
     selectedBoxId: null,
+    viewMode: "before",
+    redactedPreviewUrl: null,
+    redactedPreviewRevision: -1,
+    editRevision: 0,
+    exportRevision: -1,
+    exportStatus: "Waiting for batch",
+    timing: null,
     status: "queued",
     message: "Waiting for detection",
   }));
-  currentPage = 0;
+  activeIndex = 0;
+  lastBatchDurationMs = null;
+  updateBatchTime();
 
   elements.emptyState.hidden = items.length > 0;
-  await renderCurrentPage();
+  await renderCarousel();
   await restoreImportedRun();
   updateSummary();
   updateButtons();
@@ -233,7 +329,7 @@ async function restoreImportedRun() {
   let restored = 0;
   let mismatched = 0;
   for (const item of items) {
-    const entry = findRunEntry(runFileIndex, sourceRelativePath(item.file));
+    const entry = findRunEntry(runFileIndex, sourceRelativePath(item));
     if (!entry) continue;
     if (entry.byteSize != null && Number(entry.byteSize) !== item.file.size) {
       item.status = "error";
@@ -246,10 +342,12 @@ async function restoreImportedRun() {
     item.selectedBoxId = null;
     item.status = "detected";
     item.message = `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} restored`;
+    item.editRevision += 1;
+    item.exportStatus = "Restored · awaiting export";
     restored += 1;
   }
-  currentPage = 0;
-  await renderCurrentPage();
+  activeIndex = 0;
+  await renderCarousel();
   updateSummary();
   updateButtons();
   showProgress(
@@ -301,8 +399,11 @@ function releaseItems() {
 
 function releasePreview(item) {
   if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
   item.previewUrl = null;
   item.previewImage = null;
+  item.redactedPreviewUrl = null;
+  item.redactedPreviewRevision = -1;
 }
 
 async function ensurePreview(item) {
@@ -359,22 +460,45 @@ async function loadModel() {
 async function runAll() {
   if (!detector || running || items.length === 0) return;
   running = true;
+  batchStartedAt = performance.now();
+  startBatchTimer();
   updateButtons();
   elements.progressWrap.hidden = false;
+  await ensureExportRun({ allowPrompt: true });
 
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
+    activeIndex = index;
+    await renderCarousel();
+    const itemStartedAt = performance.now();
     showProgress(
       `Analyzing ${index + 1} of ${items.length}: ${item.file.name}`,
       (index / items.length) * 100,
     );
+    const detectionStartedAt = performance.now();
     await detectItem(item);
-    if (!isItemOnCurrentPage(item)) releasePreview(item);
+    const detectionMs = performance.now() - detectionStartedAt;
+    const exportStartedAt = performance.now();
+    await queueItemExport(item, { updatePreview: true });
+    const exportMs = performance.now() - exportStartedAt;
+    item.timing = {
+      detectionMs,
+      exportMs,
+      totalMs: performance.now() - itemStartedAt,
+    };
+    renderItemStatus(item);
+    if (!isItemVisible(item)) releasePreview(item);
   }
 
-  showProgress(`Detection finished for ${items.length} images. Review every mask.`, 100);
+  lastBatchDurationMs = performance.now() - batchStartedAt;
+  stopBatchTimer();
+  await writeRunMetadata();
+  showProgress(
+    `Batch finished in ${formatDuration(lastBatchDurationMs)}. Review the centered images; edits auto-save.`,
+    100,
+  );
   running = false;
-  await renderCurrentPage();
+  await renderCarousel();
   updateButtons();
   updateSummary();
 }
@@ -432,7 +556,8 @@ async function detectItem(item) {
 
   if (document.querySelector(`[data-item-id="${item.id}"]`)) {
     await ensurePreview(item);
-    renderItem(item);
+    renderItemStatus(item);
+    drawItem(item);
   }
   updateSummary();
 }
@@ -719,16 +844,25 @@ function normalizeDetection(result, item, scaleX = 1, scaleY = 1) {
   };
 }
 
-async function renderCurrentPage() {
+async function renderCarousel() {
   const renderToken = ++pageRenderToken;
-  const visibleItems = currentPageItems();
+  const visibleItems = carouselItems();
 
   for (const item of items) {
     if (!visibleItems.includes(item)) releasePreview(item);
   }
 
   elements.reviewGrid.replaceChildren();
-  for (const item of visibleItems) {
+  for (let offset = -CAROUSEL_RADIUS; offset <= CAROUSEL_RADIUS; offset += 1) {
+    const index = activeIndex + offset;
+    const slot = document.createElement("div");
+    slot.className = `carousel-slot ${offset === 0 ? "is-center" : "is-side"}`;
+    elements.reviewGrid.append(slot);
+    if (index < 0 || index >= items.length) {
+      slot.classList.add("is-empty");
+      continue;
+    }
+    const item = items[index];
     try {
       await ensurePreview(item);
     } catch (error) {
@@ -737,80 +871,119 @@ async function renderCurrentPage() {
       await ensureErrorPreview(item);
     }
     if (renderToken !== pageRenderToken) return;
-    renderItem(item);
+    renderItem(item, slot, offset === 0);
   }
-  updatePagination();
+  updateCarouselControls();
 }
 
-function currentPageItems() {
-  const start = currentPage * PAGE_SIZE;
-  return items.slice(start, start + PAGE_SIZE);
+function carouselItems() {
+  return items.slice(
+    Math.max(0, activeIndex - CAROUSEL_RADIUS),
+    Math.min(items.length, activeIndex + CAROUSEL_RADIUS + 1),
+  );
 }
 
-function isItemOnCurrentPage(item) {
-  return currentPageItems().includes(item);
+function isItemVisible(item) {
+  return carouselItems().includes(item);
 }
 
-async function changePage(direction) {
+async function changeCarousel(direction) {
   if (running) return;
-  const nextPage = clamp(currentPage + direction, 0, totalPages() - 1);
-  if (nextPage === currentPage) return;
-  currentPage = nextPage;
+  const nextIndex = clamp(activeIndex + direction, 0, items.length - 1);
+  if (nextIndex === activeIndex) return;
+  activeIndex = nextIndex;
   updateButtons();
-  await renderCurrentPage();
+  await renderCarousel();
   document.querySelector(".review-section")?.scrollIntoView({ behavior: "smooth" });
 }
 
-function totalPages() {
-  return Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-}
-
-function updatePagination() {
-  const pages = totalPages();
-  elements.pagination.hidden = items.length <= PAGE_SIZE;
+function updateCarouselControls() {
+  elements.pagination.hidden = items.length <= 1;
   elements.pageStatus.textContent =
-    `Page ${currentPage + 1} of ${pages} · ${PAGE_SIZE} images maximum in memory`;
-  elements.previousPageButton.disabled = running || currentPage === 0;
-  elements.nextPageButton.disabled = running || currentPage >= pages - 1;
+    items.length === 0
+      ? "No images"
+      : `Image ${activeIndex + 1} of ${items.length} · active image centered`;
+  elements.previousPageButton.disabled = running || activeIndex === 0;
+  elements.nextPageButton.disabled = running || activeIndex >= items.length - 1;
 }
 
-function renderItem(item) {
-  let card = document.querySelector(`[data-item-id="${item.id}"]`);
-  if (!card) {
-    card = document.createElement("article");
-    card.className = "image-card";
-    card.dataset.itemId = item.id;
-    card.innerHTML = `
+async function centerCarouselAt(index) {
+  if (running || index === activeIndex) return;
+  activeIndex = index;
+  updateButtons();
+  await renderCarousel();
+}
+
+function renderItem(item, slot, isActive) {
+  const card = document.createElement("article");
+  card.className = `image-card ${isActive ? "is-active" : "is-preview"}`;
+  card.dataset.itemId = item.id;
+  card.innerHTML = `
       <div class="card-heading">
         <div>
           <h3></h3>
           <p class="dimensions"></p>
+          <p class="item-timing"></p>
         </div>
         <span class="item-status"></span>
       </div>
+      <div class="comparison-toggle" role="group" aria-label="Before and after view">
+        <button class="before-view" type="button">Before · edit masks</button>
+        <button class="after-view" type="button">After · exported</button>
+      </div>
       <div class="canvas-wrap">
         <canvas aria-label="Image with editable badge detections"></canvas>
+        <img class="after-preview" alt="Redacted export preview" hidden />
+        <p class="after-pending" hidden>Preparing redacted preview…</p>
       </div>
+      <p class="export-status"></p>
       <div class="card-actions">
         <button class="button small detect-one">Detect</button>
         <button class="button small secondary remove-box">Remove selected</button>
-        <button class="button small secondary export-one">Export copy</button>
+        <button class="button small secondary export-one">Save update</button>
       </div>
     `;
-    elements.reviewGrid.append(card);
+  slot.append(card);
 
+  if (isActive) {
     const canvas = card.querySelector("canvas");
     setupCanvasInteraction(canvas, item);
     card.querySelector(".detect-one").addEventListener("click", async () => {
       if (!detector) await loadModel();
       if (!detector) return;
+      const startedAt = performance.now();
       await detectItem(item);
+      item.timing = {
+        detectionMs: performance.now() - startedAt,
+        exportMs: 0,
+        totalMs: performance.now() - startedAt,
+      };
+      await queueItemExport(item, { updatePreview: true });
     });
     card.querySelector(".remove-box").addEventListener("click", () => {
       removeSelectedBox(item);
     });
     card.querySelector(".export-one").addEventListener("click", () => {
-      exportOne(item);
+      queueItemExport(item, { updatePreview: true });
+    });
+    card.querySelector(".before-view").addEventListener("click", () => {
+      void setItemView(item, "before");
+    });
+    card.querySelector(".after-view").addEventListener("click", () => {
+      void setItemView(item, "after");
+    });
+  } else {
+    card.addEventListener("click", () => {
+      void centerCarouselAt(items.indexOf(item));
+    });
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Center ${item.file.name}`);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        void centerCarouselAt(items.indexOf(item));
+      }
     });
   }
 
@@ -819,10 +992,15 @@ function renderItem(item) {
   card.querySelector(".dimensions").textContent = item.decodeError
     ? "Not processed"
     : `${item.width} × ${item.height}${conversion}`;
+  card.querySelector(".item-timing").textContent = item.timing
+    ? `Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
+    : "Timing available after processing";
+  card.querySelector(".export-status").textContent = item.exportStatus;
   card.querySelector(".detect-one").disabled = Boolean(item.decodeError);
   card.querySelector(".export-one").disabled = Boolean(item.decodeError);
   renderItemStatus(item);
   drawItem(item);
+  updateItemView(item);
 }
 
 function renderItemStatus(item) {
@@ -832,6 +1010,82 @@ function renderItemStatus(item) {
   status.textContent = item.message;
   status.dataset.state = item.status;
   card.querySelector(".remove-box").disabled = !item.selectedBoxId;
+  const timing = card.querySelector(".item-timing");
+  if (timing) {
+    timing.textContent = item.timing
+      ? `Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
+      : "Timing available after processing";
+  }
+  const exportStatus = card.querySelector(".export-status");
+  if (exportStatus) exportStatus.textContent = item.exportStatus;
+}
+
+function updateItemView(item) {
+  const card = document.querySelector(`[data-item-id="${item.id}"]`);
+  if (!card) return;
+  const beforeButton = card.querySelector(".before-view");
+  const afterButton = card.querySelector(".after-view");
+  const canvas = card.querySelector("canvas");
+  const afterImage = card.querySelector(".after-preview");
+  const pending = card.querySelector(".after-pending");
+  const showingAfter = item.viewMode === "after";
+  beforeButton.classList.toggle("is-selected", !showingAfter);
+  afterButton.classList.toggle("is-selected", showingAfter);
+  beforeButton.setAttribute("aria-pressed", String(!showingAfter));
+  afterButton.setAttribute("aria-pressed", String(showingAfter));
+  canvas.hidden = showingAfter;
+  const previewReady =
+    showingAfter &&
+    item.redactedPreviewUrl &&
+    item.redactedPreviewRevision === item.editRevision;
+  afterImage.hidden = !previewReady;
+  pending.hidden = !showingAfter || previewReady;
+  if (previewReady) afterImage.src = item.redactedPreviewUrl;
+}
+
+async function setItemView(item, viewMode) {
+  item.viewMode = viewMode;
+  updateItemView(item);
+  if (viewMode !== "after") return;
+  try {
+    await ensureRedactedPreview(item);
+  } catch (error) {
+    console.error(error);
+    item.exportStatus = `Preview failed: ${error.message}`;
+    renderItemStatus(item);
+  }
+}
+
+async function ensureRedactedPreview(item) {
+  if (
+    item.redactedPreviewUrl &&
+    item.redactedPreviewRevision === item.editRevision
+  ) {
+    updateItemView(item);
+    return;
+  }
+  const blob = await createRedactedBlob(item);
+  setRedactedPreview(item, blob);
+}
+
+function setRedactedPreview(item, blob) {
+  if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+  item.redactedPreviewUrl = URL.createObjectURL(blob);
+  item.redactedPreviewRevision = item.editRevision;
+  updateItemView(item);
+}
+
+function markItemEdited(item) {
+  item.editRevision += 1;
+  if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+  item.redactedPreviewUrl = null;
+  item.redactedPreviewRevision = -1;
+  item.exportStatus = activeRun
+    ? "Edit pending auto-save…"
+    : "Edit preview ready; choose an export destination to auto-save";
+  updateItemView(item);
+  renderItemStatus(item);
+  scheduleItemExport(item);
 }
 
 function setupCanvasInteraction(canvas, item) {
@@ -917,6 +1171,7 @@ function setupCanvasInteraction(canvas, item) {
     if (cornerDrag) {
       cornerDrag = null;
       canvas.releasePointerCapture(event.pointerId);
+      markItemEdited(item);
       updateSummary();
       return;
     }
@@ -937,6 +1192,7 @@ function setupCanvasInteraction(canvas, item) {
       item.boxes.push(manualBox);
       item.selectedBoxId = manualBox.id;
       item.message = `${item.boxes.length} reviewed mask${item.boxes.length === 1 ? "" : "s"}`;
+      markItemEdited(item);
     }
     drawItem(item);
     renderItemStatus(item);
@@ -1213,206 +1469,349 @@ function removeBoxById(item, boxId) {
   item.boxes = item.boxes.filter((box) => box.id !== boxId);
   item.selectedBoxId = null;
   item.message = `${item.boxes.length} reviewed mask${item.boxes.length === 1 ? "" : "s"}`;
+  markItemEdited(item);
   drawItem(item);
   renderItemStatus(item);
   updateSummary();
 }
 
-async function exportOne(item) {
+async function chooseCustomExportFolder() {
+  if (typeof window.showDirectoryPicker !== "function" || running) return;
+  try {
+    customExportDirectoryHandle = await window.showDirectoryPicker({
+      id: "badge-remover-export",
+      mode: "readwrite",
+    });
+    activeRun = null;
+    updateExportDestination();
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.error(error);
+      showProgress(`Could not open the export folder: ${error.message}`, 0);
+    }
+  }
+}
+
+function useSourceExportFolder() {
+  customExportDirectoryHandle = null;
+  activeRun = null;
+  updateExportDestination();
+}
+
+function updateExportDestination() {
+  if (activeRun) {
+    elements.exportDestination.textContent =
+      `${activeRun.parentLabel} / ${activeRun.runFolderName}`;
+  } else if (customExportDirectoryHandle) {
+    elements.exportDestination.textContent =
+      `${customExportDirectoryHandle.name} / new unique run folder`;
+  } else if (sourceDirectoryHandle) {
+    elements.exportDestination.textContent =
+      `${sourceDirectoryHandle.name} / exports / new unique run folder`;
+  } else {
+    elements.exportDestination.textContent =
+      "Source folder handle unavailable; choose an export folder before the batch.";
+  }
+  elements.resetExportButton.hidden = !customExportDirectoryHandle;
+}
+
+async function ensureExportRun({ allowPrompt = false } = {}) {
+  if (activeRun) return activeRun;
+  if (typeof window.showDirectoryPicker !== "function") return null;
+
+  try {
+    let parentDirectory;
+    let parentLabel;
+    if (customExportDirectoryHandle) {
+      parentDirectory = customExportDirectoryHandle;
+      parentLabel = customExportDirectoryHandle.name;
+    } else if (sourceDirectoryHandle) {
+      parentDirectory = await sourceDirectoryHandle.getDirectoryHandle("exports", {
+        create: true,
+      });
+      parentLabel = `${sourceDirectoryHandle.name} / exports`;
+    } else if (allowPrompt) {
+      customExportDirectoryHandle = await window.showDirectoryPicker({
+        id: "badge-remover-export",
+        mode: "readwrite",
+      });
+      parentDirectory = customExportDirectoryHandle;
+      parentLabel = customExportDirectoryHandle.name;
+    } else {
+      return null;
+    }
+
+    const run = await createUniqueRunDirectory(parentDirectory);
+    activeRun = {
+      directory: run.directory,
+      runId: run.runId,
+      runFolderName: run.name,
+      parentLabel,
+      generatedAt: new Date().toISOString(),
+    };
+    updateExportDestination();
+    return activeRun;
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      console.error(error);
+      showProgress(`Automatic export is unavailable: ${error.message}`, 0);
+    }
+    return null;
+  }
+}
+
+function queueItemExport(item, options = {}) {
+  exportQueue = exportQueue
+    .catch(() => undefined)
+    .then(() => exportItemToRun(item, options));
+  return exportQueue;
+}
+
+async function exportItemToRun(item, { updatePreview = false } = {}) {
+  if (item.decodeError) return;
+  const startedAt = performance.now();
+  item.exportStatus = activeRun ? "Auto-saving export…" : "Preparing after preview…";
+  renderItemStatus(item);
   try {
     const [blob, sidecar] = await Promise.all([
       createRedactedBlob(item),
       createMetadataSidecar(item),
     ]);
-    const name = outputName(item);
-    downloadBlob(blob, name);
-    downloadBlob(sidecar, `${name}.metadata.mie`);
+    if (updatePreview || isItemVisible(item) || item.viewMode === "after") {
+      setRedactedPreview(item, blob);
+    }
+    if (activeRun) {
+      const name = outputRelativePath(item);
+      const sidecarName = `${name}.metadata.mie`;
+      await writeRelativeFile(activeRun.directory, name, blob);
+      await writeRelativeFile(activeRun.directory, sidecarName, sidecar);
+      item.exportRevision = item.editRevision;
+      item.exportedAt = new Date().toISOString();
+      item.exportError = null;
+      item.exportStatus = `Saved automatically · ${activeRun.runFolderName}`;
+      await writeRunMetadata();
+    } else {
+      item.exportStatus =
+        "After preview ready · choose an export destination to auto-save";
+    }
   } catch (error) {
     console.error(error);
-    showProgress(`Could not export ${item.file.name}: ${error.message}`, 0);
+    item.exportError = error.message;
+    item.exportStatus = `Export failed: ${error.message}`;
+  } finally {
+    const exportMs = performance.now() - startedAt;
+    item.timing ||= { detectionMs: 0, exportMs: 0, totalMs: 0 };
+    item.timing.exportMs = exportMs;
+    item.timing.totalMs = item.timing.detectionMs + exportMs;
+    renderItemStatus(item);
   }
+}
+
+function scheduleItemExport(item) {
+  if (item.status !== "detected" || running) return;
+  clearTimeout(itemExportTimers.get(item.id));
+  itemExportTimers.set(
+    item.id,
+    setTimeout(() => {
+      itemExportTimers.delete(item.id);
+      void queueItemExport(item, { updatePreview: item.viewMode === "after" });
+    }, 500),
+  );
+}
+
+let settingsExportTimer = null;
+function scheduleAllEditedExports() {
+  for (const item of items) {
+    if (item.status !== "detected") continue;
+    item.editRevision += 1;
+    if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+    item.redactedPreviewUrl = null;
+    item.redactedPreviewRevision = -1;
+    item.exportStatus = activeRun
+      ? "Settings changed · auto-save pending…"
+      : "Settings changed · after preview needs refresh";
+    renderItemStatus(item);
+    updateItemView(item);
+  }
+  if (running) return;
+  clearTimeout(settingsExportTimer);
+  settingsExportTimer = setTimeout(() => {
+    for (const item of items) {
+      if (item.status === "detected") {
+        void queueItemExport(item, { updatePreview: isItemVisible(item) });
+      }
+    }
+  }, 700);
 }
 
 async function exportAll() {
   if (items.length === 0 || running) return;
-  running = true;
-  updateButtons();
-  elements.progressWrap.hidden = false;
-
-  if (typeof window.showDirectoryPicker !== "function") {
+  const run = await ensureExportRun({ allowPrompt: true });
+  if (!run) {
     showProgress(
-      "Bulk folder export requires Microsoft Edge or Google Chrome. No files were downloaded.",
+      "Choose an export folder in Chrome or Edge to enable automatic batch saves.",
       0,
     );
-    running = false;
-    updateButtons();
     return;
   }
-
-  let outputDirectory;
-  let runId;
-  let runFolderName;
-  try {
-    const selectedDirectory = await window.showDirectoryPicker({
-      id: "badge-remover-export",
-      mode: "readwrite",
-    });
-    const run = await createUniqueRunDirectory(selectedDirectory);
-    outputDirectory = run.directory;
-    runId = run.runId;
-    runFolderName = run.name;
-  } catch (error) {
-    running = false;
-    updateButtons();
-    if (error.name !== "AbortError") {
-      console.error(error);
-      showProgress(`Could not open the output folder: ${error.message}`, 0);
-    }
-    return;
-  }
-
-  try {
-    const manifest = {
-      schemaVersion: 5,
-      appVersion: APP_VERSION,
-      runId,
-      runFolderName,
-      generatedAt: new Date().toISOString(),
-      localOnly: true,
-      originalsIncluded: false,
-      sourceRootName: sourceRootName(items[0]?.file),
-      importedFromRunId: importedManifest?.runId || null,
-      model: MODEL_ID,
-      detectionPhrases: elements.labelsInput.value,
-      enhancedTorsoRescue: elements.enhancedInput.checked,
-      threshold: Number(elements.thresholdInput.value),
-      paddingPercent: Number(elements.paddingInput.value),
-      redactionStrength: Number(elements.strengthInput.value),
-      featherPercent: Number(elements.featherInput.value),
-      files: [],
-      failures: [],
-    };
-    const trainingAnnotations = {
-      info: {
-        description: "Locally reviewed four-corner badge masks",
-        generatedAt: manifest.generatedAt,
-        localOnly: true,
-        model: MODEL_ID,
-        reviewAssumption:
-          "Export indicates that a person reviewed and corrected every final mask.",
-      },
-      licenses: [],
-      categories: [{ id: 1, name: "identification badge", supercategory: "badge" }],
-      images: [],
-      annotations: [],
-    };
-    let annotationId = 1;
-
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      showProgress(
-        `Exporting ${index + 1} of ${items.length}: ${item.file.name}`,
-        (index / items.length) * 100,
-      );
-      try {
-        const [blob, sidecar] = await Promise.all([
-          createRedactedBlob(item),
-          createMetadataSidecar(item),
-        ]);
-        const sourcePath = sourceRelativePath(item.file);
-        const name = outputRelativePath(item);
-        const sidecarName = `${name}.metadata.mie`;
-        await writeRelativeFile(outputDirectory, name, blob);
-        await writeRelativeFile(outputDirectory, sidecarName, sidecar);
-        const finalMasks = item.boxes.map(serializeBox);
-        const initialModelMasks = item.modelBoxes.map(serializeBox);
-        manifest.files.push({
-          input: item.file.name,
-          sourcePath,
-          output: name,
-          metadataArchive: sidecarName,
-          sourceFormat: item.imageInfo.sourceFormat,
-          outputFormat: item.imageInfo.outputFormat,
-          formatConverted: item.imageInfo.converted,
-          metadataPolicy:
-            "Transfer writable metadata and ICC profile; normalize Orientation to 1 after pixel rotation; exclude unsafe embedded previews; preserve non-preview source metadata in adjacent MIE archive.",
-          width: item.width,
-          height: item.height,
-          mimeType: item.file.type,
-          byteSize: item.file.size,
-          lastModified: new Date(item.file.lastModified).toISOString(),
-          initialModelMaskCount: initialModelMasks.length,
-          initialModelMasks,
-          reviewedMaskCount: finalMasks.length,
-          reviewedMasks: finalMasks,
-        });
-
-        const imageId = index + 1;
-        trainingAnnotations.images.push({
-          id: imageId,
-          file_name: sourcePath,
-          width: item.width,
-          height: item.height,
-        });
-        for (const mask of finalMasks) {
-          trainingAnnotations.annotations.push({
-            id: annotationId,
-            image_id: imageId,
-            category_id: 1,
-            bbox: [mask.x, mask.y, mask.width, mask.height],
-            segmentation: [mask.points.flatMap((point) => [point.x, point.y])],
-            area: mask.area,
-            iscrowd: 0,
-            attributes: {
-              source: mask.source,
-              originalLabel: mask.label,
-              originalScore: mask.score,
-              autoFitted: mask.autoFitted,
-              fitConfidence: mask.fitConfidence,
-              userAdjusted: mask.userAdjusted,
-            },
-          });
-          annotationId += 1;
-        }
-      } catch (error) {
-        console.error(error);
-        item.status = "error";
-        item.message = `Export skipped: ${error.message}`;
-        manifest.failures.push({
-          input: item.file.name,
-          sourcePath: sourceRelativePath(item.file),
-          error: error.message,
-        });
-      }
-      if (!isItemOnCurrentPage(item)) releasePreview(item);
-    }
-
-    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], {
-      type: "application/json",
-    });
-    const trainingBlob = new Blob([JSON.stringify(trainingAnnotations, null, 2)], {
-      type: "application/json",
-    });
-    await writeFile(outputDirectory, "badge-removal-manifest.json", manifestBlob);
-    await writeFile(
-      outputDirectory,
-      "badge-training-annotations.coco.json",
-      trainingBlob,
-    );
-
+  running = true;
+  const startedAt = performance.now();
+  batchStartedAt = startedAt;
+  startBatchTimer();
+  updateButtons();
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.status !== "detected") continue;
+    activeIndex = index;
+    await renderCarousel();
     showProgress(
-      manifest.failures.length
-        ? `Bulk export complete with ${manifest.failures.length} skipped file(s). See the manifest.`
-        : `Bulk export complete in ${runFolderName}.`,
-      100,
+      `Re-exporting ${index + 1} of ${items.length}: ${item.file.name}`,
+      (index / items.length) * 100,
     );
-  } catch (error) {
-    console.error(error);
-    showProgress(`Bulk export stopped: ${error.message}`, 0);
-  } finally {
-    running = false;
-    updateButtons();
+    await queueItemExport(item, { updatePreview: true });
+    if (!isItemVisible(item)) releasePreview(item);
   }
+  lastBatchDurationMs = performance.now() - startedAt;
+  stopBatchTimer();
+  await writeRunMetadata();
+  running = false;
+  await renderCarousel();
+  updateButtons();
+  showProgress(
+    `Re-export finished in ${formatDuration(lastBatchDurationMs)} · ${run.runFolderName}`,
+    100,
+  );
+}
+
+async function writeRunMetadata() {
+  if (!activeRun) return;
+  const manifest = buildRunManifest();
+  const trainingAnnotations = buildTrainingAnnotations(manifest);
+  await writeFile(
+    activeRun.directory,
+    "badge-removal-manifest.json",
+    new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }),
+  );
+  await writeFile(
+    activeRun.directory,
+    "badge-training-annotations.coco.json",
+    new Blob([JSON.stringify(trainingAnnotations, null, 2)], {
+      type: "application/json",
+    }),
+  );
+}
+
+function buildRunManifest() {
+  return {
+    schemaVersion: 6,
+    appVersion: APP_VERSION,
+    runId: activeRun.runId,
+    runFolderName: activeRun.runFolderName,
+    generatedAt: activeRun.generatedAt,
+    updatedAt: new Date().toISOString(),
+    localOnly: true,
+    originalsIncluded: false,
+    sourceRootName:
+      sourceDirectoryHandle?.name || sourceRootName(items[0]?.file) || null,
+    importedFromRunId: importedManifest?.runId || null,
+    model: MODEL_ID,
+    detectionPhrases: elements.labelsInput.value,
+    enhancedTorsoRescue: elements.enhancedInput.checked,
+    threshold: Number(elements.thresholdInput.value),
+    paddingPercent: Number(elements.paddingInput.value),
+    redactionStrength: Number(elements.strengthInput.value),
+    featherPercent: Number(elements.featherInput.value),
+    batchDurationMs: lastBatchDurationMs,
+    files: items
+      .filter((item) => item.exportRevision >= 0)
+      .map((item) => manifestEntry(item)),
+    failures: items
+      .filter((item) => item.exportError)
+      .map((item) => ({
+        input: item.file.name,
+        sourcePath: sourceRelativePath(item),
+        error: item.exportError,
+      })),
+  };
+}
+
+function manifestEntry(item) {
+  const finalMasks = item.boxes.map(serializeBox);
+  const initialModelMasks = item.modelBoxes.map(serializeBox);
+  const output = outputRelativePath(item);
+  return {
+    input: item.file.name,
+    sourcePath: sourceRelativePath(item),
+    output,
+    metadataArchive: `${output}.metadata.mie`,
+    sourceFormat: item.imageInfo.sourceFormat,
+    outputFormat: item.imageInfo.outputFormat,
+    formatConverted: item.imageInfo.converted,
+    metadataPolicy:
+      "Transfer writable metadata and ICC profile; normalize Orientation to 1 after pixel rotation; exclude unsafe embedded previews; preserve non-preview source metadata in adjacent MIE archive.",
+    width: item.width,
+    height: item.height,
+    mimeType: item.file.type,
+    byteSize: item.file.size,
+    lastModified: new Date(item.file.lastModified).toISOString(),
+    exportedAt: item.exportedAt,
+    editRevision: item.editRevision,
+    processingTimeMs: item.timing?.totalMs || null,
+    detectionTimeMs: item.timing?.detectionMs || null,
+    exportTimeMs: item.timing?.exportMs || null,
+    initialModelMaskCount: initialModelMasks.length,
+    initialModelMasks,
+    reviewedMaskCount: finalMasks.length,
+    reviewedMasks: finalMasks,
+  };
+}
+
+function buildTrainingAnnotations(manifest) {
+  const training = {
+    info: {
+      description: "Locally reviewed four-corner badge masks",
+      generatedAt: manifest.generatedAt,
+      localOnly: true,
+      model: MODEL_ID,
+      reviewAssumption:
+        "Export records the latest automatically saved mask revision.",
+    },
+    licenses: [],
+    categories: [{ id: 1, name: "identification badge", supercategory: "badge" }],
+    images: [],
+    annotations: [],
+  };
+  let annotationId = 1;
+  manifest.files.forEach((entry, index) => {
+    const imageId = index + 1;
+    training.images.push({
+      id: imageId,
+      file_name: entry.sourcePath,
+      width: entry.width,
+      height: entry.height,
+    });
+    for (const mask of entry.reviewedMasks) {
+      training.annotations.push({
+        id: annotationId,
+        image_id: imageId,
+        category_id: 1,
+        bbox: [mask.x, mask.y, mask.width, mask.height],
+        segmentation: [mask.points.flatMap((point) => [point.x, point.y])],
+        area: mask.area,
+        iscrowd: 0,
+        attributes: {
+          source: mask.source,
+          originalLabel: mask.label,
+          originalScore: mask.score,
+          autoFitted: mask.autoFitted,
+          fitConfidence: mask.fitConfidence,
+          userAdjusted: mask.userAdjusted,
+        },
+      });
+      annotationId += 1;
+    }
+  });
+  return training;
 }
 
 function serializeBox(box) {
@@ -1515,14 +1914,21 @@ function outputName(item) {
   return `${base}-redacted${extension}`;
 }
 
-function sourceRelativePath(file) {
+function fallbackRelativePath(file) {
   const parts = (file.webkitRelativePath || file.name).split("/").filter(Boolean);
   if (parts.length > 1) parts.shift();
   return parts.join("/");
 }
 
+function sourceRelativePath(itemOrFile) {
+  if (itemOrFile?.relativePath) {
+    return normalizeSourcePath(itemOrFile.relativePath);
+  }
+  return fallbackRelativePath(itemOrFile);
+}
+
 function outputRelativePath(item) {
-  const sourcePath = sourceRelativePath(item.file);
+  const sourcePath = sourceRelativePath(item);
   const parts = sourcePath.split("/");
   parts.pop();
   parts.push(outputName(item));
@@ -1655,14 +2061,19 @@ function updateSummary() {
 
 function updateButtons() {
   const hasProcessableItems = items.some((item) => !item.decodeError);
+  const hasDetectedItems = items.some((item) => item.status === "detected");
   elements.runAllButton.disabled =
     !serverReady || !detector || !hasProcessableItems || running;
   elements.exportAllButton.disabled =
-    !serverReady || !hasProcessableItems || running;
+    !serverReady || !hasDetectedItems || running;
   elements.loadModelButton.disabled = !serverReady || Boolean(detector) || running;
+  elements.chooseSourceButton.disabled = !serverReady || running;
   elements.folderInput.disabled = !serverReady || running;
+  elements.changeExportButton.disabled =
+    !serverReady || running || typeof window.showDirectoryPicker !== "function";
+  elements.resetExportButton.disabled = !serverReady || running;
   elements.importRunButton.disabled = !serverReady || running;
-  updatePagination();
+  updateCarouselControls();
 }
 
 function setModelStatus(state, text) {
@@ -1674,6 +2085,38 @@ function showProgress(text, percent) {
   elements.progressWrap.hidden = false;
   elements.progressText.textContent = text;
   elements.progressBar.style.width = `${clamp(percent, 0, 100)}%`;
+}
+
+function startBatchTimer() {
+  stopBatchTimer();
+  updateBatchTime();
+  batchTimer = setInterval(updateBatchTime, 250);
+}
+
+function stopBatchTimer() {
+  if (batchTimer) clearInterval(batchTimer);
+  batchTimer = null;
+  updateBatchTime();
+}
+
+function updateBatchTime() {
+  if (batchTimer && batchStartedAt != null) {
+    elements.batchTime.textContent =
+      `Processing · ${formatDuration(performance.now() - batchStartedAt)}`;
+  } else if (lastBatchDurationMs != null) {
+    elements.batchTime.textContent =
+      `Last batch · ${formatDuration(lastBatchDurationMs)}`;
+  } else {
+    elements.batchTime.textContent = "Not started";
+  }
+}
+
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(0, milliseconds) / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(totalSeconds < 10 ? 1 : 0)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
 function clamp(value, min, max) {

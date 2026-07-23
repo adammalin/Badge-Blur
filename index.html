@@ -51,17 +51,22 @@
         </div>
 
         <div class="control-grid">
-          <label class="file-picker">
-            <span>Choose folder</span>
-            <small>JPEG, PNG, TIFF, WebP, AVIF, HEIC/HEIF</small>
+          <div class="file-picker">
+            <button id="chooseSourceButton" type="button">
+              Choose source folder
+            </button>
+            <small id="sourceFolderLabel">
+              JPEG, PNG, TIFF, WebP, AVIF, HEIC/HEIF
+            </small>
             <input
               id="folderInput"
               type="file"
               accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.avif,.heic,.heif"
               webkitdirectory
               multiple
+              hidden
             />
-          </label>
+          </div>
 
           <label>
             Detection phrases
@@ -144,13 +149,23 @@
 
         <div class="toolbar">
           <button id="loadModelButton" class="button secondary">
-            Load local model
+            Loading models automatically…
           </button>
           <button id="runAllButton" class="button primary" disabled>
-            Detect all badges
+            Start batch
           </button>
           <button id="exportAllButton" class="button success" disabled>
-            Export all to folder
+            Re-export all
+          </button>
+          <button id="changeExportButton" class="button secondary" disabled>
+            Choose different export folder
+          </button>
+          <button
+            id="resetExportButton"
+            class="button secondary"
+            hidden
+          >
+            Use source / exports
           </button>
           <button id="importRunButton" class="button secondary">
             Import previous run
@@ -161,6 +176,18 @@
             accept=".json,application/json"
             hidden
           />
+        </div>
+        <div class="run-details" aria-live="polite">
+          <div>
+            <span>Auto-save destination</span>
+            <strong id="exportDestination">
+              Choose a source folder to use its exports subfolder.
+            </strong>
+          </div>
+          <div>
+            <span>Batch processing time</span>
+            <strong id="batchTime">Not started</strong>
+          </div>
         </div>
         <aside class="instruction">
           To revise an earlier batch, import its
@@ -200,13 +227,18 @@
           to discard one.
         </aside>
 
-        <nav id="pagination" class="pagination" aria-label="Review pages" hidden>
+        <nav
+          id="pagination"
+          class="carousel-controls"
+          aria-label="Image carousel"
+          hidden
+        >
           <button id="previousPageButton" class="button small secondary">
-            Previous page
+            Previous image
           </button>
-          <p id="pageStatus">Page 1 of 1</p>
+          <p id="pageStatus">Image 1 of 1</p>
           <button id="nextPageButton" class="button small secondary">
-            Next page
+            Next image
           </button>
         </nav>
 
@@ -214,7 +246,7 @@
           <span class="empty-icon">▧</span>
           <p>Select the synthetic demo folder to begin.</p>
         </div>
-        <div id="reviewGrid" class="review-grid"></div>
+        <div id="reviewGrid" class="review-carousel"></div>
       </section>
     </main>
 

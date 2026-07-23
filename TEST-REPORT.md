@@ -87,17 +87,18 @@ npm run benchmark:models
 The browser WASM path was separately exercised because its confidence scores
 are not numerically identical to the Node CPU path.
 
-## Queue and pagination validation
+## Queue and carousel validation
 
 The production build was opened from the local packaged server and the five
 demo files were selected as a folder. Browser checks confirmed:
 
-- page 1 renders four image cards and page 2 renders one;
-- Previous/Next state and page labels update correctly;
+- the carousel renders the active image in the center with at most one
+  neighboring preview on each side;
+- Previous/Next state and centered-image labels update correctly;
 - every retained review canvas has a maximum dimension of 1200 pixels;
 - detection processes all five files sequentially and reaches 100%;
 - the queue finishes with per-image counts `1, 2, 4, 1, 3`;
-- changing pages releases the other page's previews; and
+- moving the carousel releases previews outside its three-item window; and
 - full-resolution files are reopened one at a time for detection or export.
 
 The bounded design prevents the application from decoding every
@@ -107,9 +108,11 @@ production deployment.
 
 ## Bulk export validation boundary
 
-Version 0.7.0 uses the following bulk-export contract:
+Version 0.11.0 uses the following bulk-export contract:
 
-- one File System Access destination-folder selection;
+- one writable File System Access source-folder selection;
+- progressive auto-save into the source folder's `exports` subfolder, with an
+  optional alternate destination;
 - sequential writes into a unique
   `badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` folder;
 - preserved source subfolders;
@@ -123,6 +126,11 @@ the app checks for an existing directory before creation. A previous run
 manifest can be imported with the original source folder to restore reviewed
 masks and settings. Files are matched by relative path and byte size; changed
 files are skipped.
+
+The production UI records detection/export time per image, live elapsed batch
+time, and final batch duration in its schema-version-6 manifest. The
+Before/After toggle uses the same full-resolution local redaction endpoint as
+the progressively written file.
 
 ## Format and metadata validation
 
@@ -170,7 +178,25 @@ at feather settings 0%, 12%, and 25%. The rendered outputs confirmed:
 The app UI exposes the Edge feather slider at its 10% default and explains the
 four-corner workflow. Corner edits are accepted only while the quadrilateral
 remains convex, preventing crossed or self-intersecting masks. Polygon points
-are stored in the version 5 audit manifest and as COCO segmentation data.
+are stored in the version 6 audit manifest and as COCO segmentation data.
+
+## Redaction-strength regression
+
+Version 0.11.0 fixes a full-resolution redaction defect in which two
+consecutive Sharp resize calls collapsed to the final resize and left only a
+very weak blur. The downscale and nearest-neighbor upscale are now separated
+by an encoded buffer so the intended privacy mosaic is guaranteed to occur.
+
+`npm run test:redaction` uses a synthetic text-heavy badge and verifies:
+
+- 82.5% of local edge detail is removed from the protected interior;
+- the mean interior pixel difference is 43.42 levels; and
+- pixels in a control region well outside the mask remain unchanged.
+
+The supplied 8448 × 6336 regression photo was also sent through the running
+`/api/image/redact` endpoint using its three reviewed manifest masks. The
+three badge regions retained 24.1%, 23.5%, and 31.7% of their original edge
+detail, and the previously readable badge text was no longer legible.
 
 ## Automatic corner-fit validation
 

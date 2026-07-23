@@ -1,6 +1,6 @@
 {
   "name": "local-badge-remover",
-  "version": "0.10.4",
+  "version": "0.11.0",
   "private": true,
   "description": "Local-only browser MVP for detecting and redacting identification badges.",
   "type": "module",
@@ -14,6 +14,7 @@
     "build": "vite build",
     "benchmark:models": "node scripts/benchmark-models.mjs",
     "test:corner-fit": "node scripts/test-corner-fit.mjs",
+    "test:redaction": "node scripts/test-redaction-strength.mjs",
     "test:run-storage": "node scripts/test-run-storage.mjs",
     "test:badge-set": "node scripts/evaluate-badge-set.mjs",
     "test:badge-production": "node scripts/evaluate-badge-set.mjs --torso-guided --skip-redaction",

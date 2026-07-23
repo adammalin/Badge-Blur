@@ -24,19 +24,21 @@ Use
 ---
 1. Select a folder of JPEG, PNG, 8-bit single-page TIFF, WebP, AVIF, or
    HEIC/HEIF images.
-2. Load the local model.
-3. Run detection.
+2. Wait for the bundled local models to load automatically.
+3. Choose Start batch.
 4. Strong badge edges are corner-fitted automatically; uncertain fits remain
    rectangles.
-5. Review each four-image page with Previous page and Next page.
+5. Review the centered image in the left-to-right carousel.
 6. Drag over missed badges to add masks.
 7. Click a mask and drag its four corner handles to match the badge.
 8. Adjust Edge feather to soften the expanded mask boundary.
 9. Select false masks and remove them.
-10. Choose one destination and export every reviewed copy automatically.
+10. Toggle Before and After to compare the editable mask and redacted export.
 
-The app does not modify or copy originals. Each export writes redacted copies
-and a review manifest to a unique "badge-remover-run-..." folder. A COCO-format
+The app does not modify or copy originals. As each image finishes, the app
+auto-saves it into a unique "exports/badge-remover-run-..." folder inside the
+selected source folder. A different destination can be chosen before starting.
+A COCO-format
 annotation file
 records the final reviewed quadrilaterals and bounding boxes for possible
 future local model training.
@@ -44,7 +46,7 @@ To revise an earlier batch, use "Import previous run," select its
 badge-removal-manifest.json, and reselect the original source folder. The app
 restores matching reviewed masks and settings locally.
 The current model does not retrain itself while the app is running.
-Detection and export run sequentially. The app keeps at most four bounded
+Detection and export run sequentially. The app keeps at most three bounded
 review previews in memory and reopens one full-resolution source at a time.
 Each output also gets a ".metadata.mie" archive. Writable photo metadata and
 the ICC profile are transferred. Embedded thumbnails/previews are excluded

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0 — 2026-07-23
+
+- Automatically loads the bundled Grounding DINO and CLIP models after the
+  local server version check succeeds.
+- Uses a writable source-folder handle in Chrome/Edge and auto-saves each
+  processed image into `source/exports/a-unique-run-folder`.
+- Adds a user-selectable alternate export destination without changing the
+  source-folder default.
+- Replaces four-image pages with a left-to-right three-slot carousel that keeps
+  the actively processed or reviewed image centered.
+- Adds Before/edit and After/exported toggles with progressive redacted
+  previews and automatic re-export after manual mask changes.
+- Records per-image detection/export time, live batch elapsed time, and final
+  batch duration in both the interface and schema-version-6 manifest.
+- Fixes the full-resolution redaction pipeline so its downscale/upscale mosaic
+  is applied as two distinct image operations instead of being optimized away
+  into an almost invisible blur.
+- Adds a redaction-strength regression test that verifies detail loss inside
+  the mask and unchanged pixels well outside it.
+
 ## 0.10.4 — 2026-07-23
 
 - Prevents a false “could not start” dialog when the bundled server is running
