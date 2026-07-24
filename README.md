@@ -219,6 +219,39 @@ Requirements:
 - Internet access during first setup to download the pinned public npm
   packages and local model files.
 
+#### Two-command source setup
+
+Open Terminal in the folder where the source copy should be created, then run
+these two commands:
+
+```bash
+curl --fail --location --show-error \
+  https://raw.githubusercontent.com/adammalin/Badge-Blur/main/scripts/bootstrap-mac-source-test.zsh \
+  --output badge-blur-bootstrap.zsh
+zsh badge-blur-bootstrap.zsh
+```
+
+The first command only downloads the readable bootstrap script. The second
+command downloads the latest main-branch repo ZIP, expands it into a new
+`Badge-Blur-source-test` folder, and runs the local setup. It refuses to
+overwrite an existing folder. macOS includes `curl` and `unzip`, so `wget` is
+not required.
+
+To use a different destination, supply it to the second command:
+
+```bash
+zsh badge-blur-bootstrap.zsh /path/to/Badge-Blur-source-test
+```
+
+For later launches:
+
+```bash
+cd Badge-Blur-source-test
+npm start
+```
+
+#### Manual source ZIP setup
+
 1. Download the
    [main branch source ZIP](https://github.com/adammalin/Badge-Blur/archive/refs/heads/main.zip)
    and expand it.
