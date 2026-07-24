@@ -23,17 +23,16 @@ http://127.0.0.1:4173/
 local models, verifies their SHA-256 checksums, and builds the app. `npm start`
 serves the already-built app only on the local loopback interface.
 
-Version 0.11.0 verifies that the browser and local image-processing server are
-the same release before enabling work. On Mac, launching a newly unpacked
-release no longer reuses an older server solely because it has the same page
-title.
+The app verifies that the browser and local image-processing server are the
+same release before enabling work. Launchers track the local service, reject
+unsafe stale-process cleanup, and start a fresh process after a clean quit.
 
 Do not use `npm run dev` for normal photo processing. The packaged local
 runtime is the supported MVP path.
 
 ## Model download
 
-Version 0.11.0 uses the Apache-2.0 quantized ONNX conversion of
+The current release uses the Apache-2.0 quantized ONNX conversion of
 [`Grounding DINO Tiny`](https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX).
 Enhanced mode adds the quantized Transformers.js conversion of
 [`CLIP ViT-B/32`](https://huggingface.co/Xenova/clip-vit-base-patch32) to
@@ -196,8 +195,10 @@ test package.
    `demo-test-images` folder, run a batch, review every mask, and confirm that
    redacted copies and the run manifest are written to a new uniquely named
    export folder. Confirm that the source images are unchanged.
-9. Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
-   tab does not stop the local app.
+9. Click **Quit Badge Blur** in the upper-right corner. Wait for the
+   confirmation that the private local service stopped, then close the browser
+   tab. If the tab was closed first, quit Badge Blur from the Dock or Activity
+   Monitor.
 
 After the first approved launch, macOS saves Badge Blur as an exception and it
 normally opens by double-clicking. Do not disable Gatekeeper globally or use
@@ -275,6 +276,13 @@ executable on their matching hosted operating systems.
 Installer CI is intentionally not run for ordinary branch pushes. It runs only
 when started manually from the **Build installable apps** workflow or when a
 version tag matching `v*` is pushed.
+
+Each launch receives a new shutdown token. The in-app Quit control shuts down
+the local server and releases its port before reporting success. The server
+also watches its launcher and exits if the launcher crashes. A later launch
+removes only a stale process that can be verified as belonging to Badge Blur;
+an already-running healthy app is reopened instead of duplicated. The Windows
+uninstaller verifies shutdown before deleting the installation.
 
 Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
 The Mac app has an ad-hoc integrity signature, but it is not Developer ID

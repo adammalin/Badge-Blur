@@ -19,7 +19,7 @@ internal static class BadgeBlurProgram
             string.Equals(argument, "--quit", StringComparison.OrdinalIgnoreCase)))
         {
             SignalQuit();
-            return 0;
+            return BadgeBlurContext.StopExistingServer(5000) ? 0 : 1;
         }
 
         bool createdNew;
@@ -35,6 +35,11 @@ internal static class BadgeBlurProgram
             Application.SetCompatibleTextRenderingDefault(false);
             try
             {
+                if (!BadgeBlurContext.StopExistingServer(0))
+                {
+                    throw new InvalidOperationException(
+                        "An old Badge Blur service could not be stopped.");
+                }
                 Application.Run(new BadgeBlurContext());
                 return 0;
             }
@@ -105,6 +110,117 @@ internal sealed class BadgeBlurContext : ApplicationContext
         get { return Path.Combine(Path.GetTempPath(), "badge-blur.port"); }
     }
 
+    internal static string ServerPidFilePath
+    {
+        get
+        {
+            return Path.Combine(
+                Path.GetTempPath(),
+                "badge-blur-server.pid");
+        }
+    }
+
+    internal static bool StopExistingServer(int gracePeriodMilliseconds)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(
+            Math.Max(0, gracePeriodMilliseconds));
+
+        while (File.Exists(ServerPidFilePath))
+        {
+            int processId;
+            if (!int.TryParse(
+                File.ReadAllText(ServerPidFilePath).Trim(),
+                out processId))
+            {
+                DeleteLifecycleFiles();
+                return true;
+            }
+
+            Process staleProcess;
+            try
+            {
+                staleProcess = Process.GetProcessById(processId);
+                if (staleProcess.HasExited)
+                {
+                    staleProcess.Dispose();
+                    DeleteLifecycleFiles();
+                    return true;
+                }
+            }
+            catch (ArgumentException)
+            {
+                DeleteLifecycleFiles();
+                return true;
+            }
+
+            if (DateTime.UtcNow < deadline)
+            {
+                staleProcess.Dispose();
+                Thread.Sleep(100);
+                continue;
+            }
+
+            try
+            {
+                string expectedNode = Path.GetFullPath(
+                    Path.Combine(
+                        AppDomain.CurrentDomain.BaseDirectory,
+                        "runtime",
+                        "node.exe"));
+                string actualExecutable = Path.GetFullPath(
+                    staleProcess.MainModule.FileName);
+                if (!string.Equals(
+                    expectedNode,
+                    actualExecutable,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    staleProcess.Dispose();
+                    return false;
+                }
+
+                staleProcess.Kill();
+                if (!staleProcess.WaitForExit(3000))
+                {
+                    staleProcess.Dispose();
+                    return false;
+                }
+            }
+            catch
+            {
+                staleProcess.Dispose();
+                return false;
+            }
+
+            staleProcess.Dispose();
+            DeleteLifecycleFiles();
+            return true;
+        }
+
+        DeleteFile(PortFilePath);
+        return true;
+    }
+
+    private static void DeleteLifecycleFiles()
+    {
+        DeleteFile(ServerPidFilePath);
+        DeleteFile(PortFilePath);
+    }
+
+    private static void DeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // A later launcher may already own or have removed the file.
+        }
+    }
+
     internal BadgeBlurContext()
     {
         string installDirectory = AppDomain.CurrentDomain.BaseDirectory;
@@ -153,12 +269,27 @@ internal sealed class BadgeBlurContext : ApplicationContext
         startInfo.EnvironmentVariables["BADGE_REMOVER_PORT"] = port.ToString();
         startInfo.EnvironmentVariables["BADGE_REMOVER_OPEN_BROWSER"] = "0";
         startInfo.EnvironmentVariables["BADGE_REMOVER_PREFERRED_BROWSER"] = "edge";
+        startInfo.EnvironmentVariables["BADGE_REMOVER_PARENT_PID"] =
+            Process.GetCurrentProcess().Id.ToString();
+        startInfo.EnvironmentVariables["BADGE_REMOVER_PID_FILE"] =
+            ServerPidFilePath;
 
         serverProcess = Process.Start(startInfo);
         if (serverProcess == null)
         {
             throw new InvalidOperationException(
                 "The private local processing service did not start.");
+        }
+        try
+        {
+            File.WriteAllText(
+                ServerPidFilePath,
+                serverProcess.Id.ToString());
+        }
+        catch
+        {
+            serverProcess.Kill();
+            throw;
         }
 
         Thread readinessThread = new Thread(WaitForServer);
@@ -258,7 +389,11 @@ internal sealed class BadgeBlurContext : ApplicationContext
 
         if (serverProcess == null || serverProcess.HasExited)
         {
-            if (!failureReported)
+            bool cleanExit =
+                serverProcess != null &&
+                serverProcess.HasExited &&
+                serverProcess.ExitCode == 0;
+            if (!cleanExit && !failureReported)
             {
                 failureReported = true;
                 MessageBox.Show(
@@ -336,17 +471,7 @@ internal sealed class BadgeBlurContext : ApplicationContext
             // Windows will release the remaining process at sign-out.
         }
 
-        try
-        {
-            if (File.Exists(PortFilePath))
-            {
-                File.Delete(PortFilePath);
-            }
-        }
-        catch
-        {
-            // A stale port file is harmless and is replaced at next launch.
-        }
+        DeleteLifecycleFiles();
 
         trayIcon.Dispose();
         quitEvent.Dispose();

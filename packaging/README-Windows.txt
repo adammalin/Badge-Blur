@@ -88,13 +88,17 @@ Limitations
 
 Stop
 ----
-Right-click the Badge Blur notification-area icon and choose Quit Badge Blur.
+Click "Quit Badge Blur" in the upper-right corner of the app and wait for the
+message that the private local service stopped. You can also right-click the
+Badge Blur notification-area icon and choose Quit Badge Blur.
 Portable ZIP users press Control-C in its Command Prompt window.
 
 Remove
 ------
 Open Settings > Apps > Installed apps, find Badge Blur, and choose Uninstall.
-The uninstaller removes the app, private runtime, models, and shortcuts.
+The uninstaller first verifies that the local service stopped, then removes the
+app, private runtime, models, and shortcuts. It stops with an explanation
+instead of deleting an installation that is still running.
 Export folders created beside selected photographs are user output and are
 intentionally not removed.
 

@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-24
-Release: `0.16.0`
+Release: `0.17.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:

@@ -1,4 +1,12 @@
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { dirname, extname, normalize, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
@@ -20,7 +28,15 @@ const packageRoot = resolve(scriptDirectory, "..");
 const appVersion = JSON.parse(
   readFileSync(resolve(packageRoot, "package.json"), "utf8"),
 ).version;
-const apiVersion = 4;
+const apiVersion = 5;
+const lifecycleToken = randomBytes(32).toString("hex");
+const launcherParentPid = positiveInteger(
+  process.env.BADGE_REMOVER_PARENT_PID,
+);
+const pidFile = process.env.BADGE_REMOVER_PID_FILE || "";
+let activeServer = null;
+let parentWatch = null;
+let shutdownStarted = false;
 
 if (!existsSync(root)) {
   console.error(`The packaged app is missing: ${root}`);
@@ -40,7 +56,7 @@ if (!existsSync(root)) {
     ".wasm": "application/wasm",
   };
 
-  const server = createServer(async (request, response) => {
+  activeServer = createServer(async (request, response) => {
     const requestPath = decodeURIComponent(new URL(request.url, `http://${host}`).pathname);
 
     if (request.method === "GET" && requestPath === "/api/status") {
@@ -48,7 +64,23 @@ if (!existsSync(root)) {
         appVersion,
         apiVersion,
         localOnly: true,
+        lifecycleToken,
+        launcherParentPid,
+        processId: process.pid,
       });
+      return;
+    }
+
+    if (request.method === "POST" && requestPath === "/api/shutdown") {
+      const suppliedToken = String(
+        request.headers["x-badge-lifecycle-token"] || "",
+      );
+      if (!tokensMatch(suppliedToken, lifecycleToken)) {
+        sendJson(response, { error: "Shutdown authorization failed." }, 403);
+        return;
+      }
+      sendJson(response, { shuttingDown: true });
+      setImmediate(() => requestShutdown("user request"));
       return;
     }
 
@@ -138,16 +170,110 @@ if (!existsSync(root)) {
     createReadStream(filePath).pipe(response);
   });
 
-  server.listen(port, host, () => {
-    const address = server.address();
+  activeServer.listen(port, host, () => {
+    const address = activeServer.address();
     const activePort = typeof address === "object" && address ? address.port : port;
     const url = `http://${host}:${activePort}/`;
+    writePidFile();
     console.log(`Badge Blur: ${url}`);
 
     if (process.env.BADGE_REMOVER_OPEN_BROWSER === "1") {
       openBrowser(url);
     }
   });
+
+  activeServer.on("error", (error) => {
+    console.error(`Badge Blur local server failed: ${error.message}`);
+    removePidFile();
+  });
+
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => requestShutdown(signal));
+  }
+
+  if (launcherParentPid) {
+    parentWatch = setInterval(() => {
+      if (!processIsAlive(launcherParentPid)) {
+        requestShutdown("launcher exited");
+      }
+    }, 750);
+  }
+
+  process.once("exit", removePidFile);
+}
+
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function tokensMatch(supplied, expected) {
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    suppliedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(suppliedBuffer, expectedBuffer)
+  );
+}
+
+function writePidFile() {
+  if (!pidFile) return;
+  try {
+    writeFileSync(pidFile, `${process.pid}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  } catch (error) {
+    console.warn(`Could not write lifecycle PID file: ${error.message}`);
+  }
+}
+
+function removePidFile() {
+  if (!pidFile || !existsSync(pidFile)) return;
+  try {
+    const recordedPid = positiveInteger(readFileSync(pidFile, "utf8").trim());
+    if (recordedPid === process.pid) {
+      unlinkSync(pidFile);
+    }
+  } catch {
+    // A later launcher owns or has already removed the lifecycle file.
+  }
+}
+
+function requestShutdown(reason) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  if (parentWatch) {
+    clearInterval(parentWatch);
+    parentWatch = null;
+  }
+  console.log(`Badge Blur shutting down: ${reason}`);
+
+  if (!activeServer?.listening) {
+    removePidFile();
+    process.exitCode = 0;
+    return;
+  }
+
+  activeServer.close(() => {
+    removePidFile();
+    process.exitCode = 0;
+  });
+
+  const forcedExit = setTimeout(() => {
+    removePidFile();
+    process.exit(0);
+  }, 3000);
+  forcedExit.unref();
 }
 
 function decodeRequestHeader(value) {
@@ -187,12 +313,12 @@ function sendBinary(response, data, contentType, info) {
   response.end(data);
 }
 
-function sendJson(response, value) {
+function sendJson(response, value, status = 200) {
   const data = Buffer.from(JSON.stringify(value));
   response.setHeader("Content-Type", "application/json");
   response.setHeader("Content-Length", data.length);
   response.setHeader("Cache-Control", "no-store");
-  response.writeHead(200);
+  response.writeHead(status);
   response.end(data);
 }
 

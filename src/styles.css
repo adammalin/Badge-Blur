@@ -137,6 +137,24 @@ h3 {
   backdrop-filter: blur(12px);
 }
 
+.header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.65rem;
+}
+
+.quit-app-button {
+  min-width: 170px;
+}
+
+.header-actions > small {
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
 .privacy-dot {
   width: 12px;
   height: 12px;
@@ -744,6 +762,15 @@ footer {
 
   .privacy-card {
     min-width: 0;
+  }
+
+  .header-actions {
+    justify-items: stretch;
+  }
+
+  .header-actions > small {
+    max-width: none;
+    text-align: left;
   }
 
   .control-grid,

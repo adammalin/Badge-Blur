@@ -34,8 +34,8 @@ import {
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.16.0";
-const IMAGE_API_VERSION = 4;
+const APP_VERSION = "0.17.0";
+const IMAGE_API_VERSION = 5;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -95,6 +95,8 @@ const elements = {
   previousPageButton: document.querySelector("#previousPageButton"),
   nextPageButton: document.querySelector("#nextPageButton"),
   pageStatus: document.querySelector("#pageStatus"),
+  quitAppButton: document.querySelector("#quitAppButton"),
+  quitAppHelp: document.querySelector("#quitAppHelp"),
 };
 
 let modelWorkers = [];
@@ -104,6 +106,7 @@ let activeIndex = 0;
 let pageRenderToken = 0;
 let importedManifest = null;
 let serverReady = false;
+let lifecycleToken = null;
 let sourceDirectoryHandle = null;
 let customExportDirectoryHandle = null;
 let activeRun = null;
@@ -156,6 +159,7 @@ elements.importRunButton.addEventListener("click", () => {
 elements.runManifestInput.addEventListener("change", importPreviousRun);
 elements.previousPageButton.addEventListener("click", () => changeCarousel(-1));
 elements.nextPageButton.addEventListener("click", () => changeCarousel(1));
+elements.quitAppButton.addEventListener("click", quitBadgeBlur);
 if (typeof window.showDirectoryPicker !== "function") {
   elements.exportCompatibility.hidden = false;
 }
@@ -183,19 +187,23 @@ async function verifyLocalServer() {
     const status = await response.json();
     if (
       status.appVersion !== APP_VERSION ||
-      status.apiVersion !== IMAGE_API_VERSION
+      status.apiVersion !== IMAGE_API_VERSION ||
+      typeof status.lifecycleToken !== "string" ||
+      status.lifecycleToken.length < 32
     ) {
       throw new Error(
         `Browser ${APP_VERSION} is connected to local server ` +
           `${status.appVersion || "unknown"}.`,
       );
     }
+    lifecycleToken = status.lifecycleToken;
     serverReady = true;
     updateButtons();
     await loadModel();
   } catch (error) {
     console.error("Local server compatibility check failed.", error);
     serverReady = false;
+    lifecycleToken = null;
     setModelStatus("error", "Restart required");
     showProgress(
       "This page is connected to an older Badge Blur server. Close old " +
@@ -203,6 +211,57 @@ async function verifyLocalServer() {
       0,
     );
     updateButtons();
+  }
+}
+
+async function quitBadgeBlur() {
+  if (!serverReady || !lifecycleToken) return;
+  if (
+    running &&
+    !window.confirm(
+      "A batch is still running. Quit Badge Blur and stop processing now?",
+    )
+  ) {
+    return;
+  }
+
+  const token = lifecycleToken;
+  elements.quitAppButton.disabled = true;
+  elements.quitAppButton.textContent = "Shutting down…";
+  elements.quitAppHelp.textContent =
+    "Stopping the private local service and releasing its port.";
+
+  try {
+    const response = await fetch("/api/shutdown", {
+      method: "POST",
+      headers: {
+        "X-Badge-Lifecycle-Token": token,
+      },
+    });
+    const detail = await response.json().catch(() => ({}));
+    if (!response.ok || !detail.shuttingDown) {
+      throw new Error(detail.error || `Shutdown failed (${response.status}).`);
+    }
+
+    serverReady = false;
+    lifecycleToken = null;
+    running = false;
+    stopBatchTimer();
+    updateButtons();
+    setModelStatus("idle", "App stopped");
+    showProgress(
+      "Badge Blur has shut down and released its local server. You can close this browser tab.",
+      100,
+    );
+    elements.quitAppButton.textContent = "Badge Blur stopped";
+    elements.quitAppHelp.textContent =
+      "The private local service is no longer running.";
+  } catch (error) {
+    console.error("Badge Blur shutdown failed.", error);
+    elements.quitAppButton.disabled = false;
+    elements.quitAppButton.textContent = "Quit Badge Blur";
+    elements.quitAppHelp.textContent =
+      `Could not stop the local service: ${error.message}`;
   }
 }
 
@@ -2321,6 +2380,7 @@ function updateButtons() {
     !serverReady || running || typeof window.showDirectoryPicker !== "function";
   elements.resetExportButton.disabled = !serverReady || running;
   elements.importRunButton.disabled = !serverReady || running;
+  elements.quitAppButton.disabled = !serverReady || !lifecycleToken;
   for (const control of [
     elements.labelsInput,
     elements.enhancedInput,

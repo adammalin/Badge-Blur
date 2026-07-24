@@ -3,6 +3,7 @@ SetCompressor /SOLID lzma
 SetCompressorDictSize 64
 
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 
 !ifndef VERSION
   !error "VERSION must be supplied with /DVERSION=x.y.z"
@@ -93,9 +94,14 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext current
-  IfFileExists "$INSTDIR\Badge Blur.exe" 0 +3
-  ExecWait '"$INSTDIR\Badge Blur.exe" --quit'
-  Sleep 1200
+  IfFileExists "$INSTDIR\Badge Blur.exe" 0 shutdown_complete
+  ExecWait '"$INSTDIR\Badge Blur.exe" --quit' $0
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK \
+      "Badge Blur could not stop its local service. Quit Badge Blur and try uninstalling again."
+    Abort
+  ${EndIf}
+shutdown_complete:
 
   Delete "$DESKTOP\Badge Blur.lnk"
   Delete "$SMPROGRAMS\Badge Blur\Badge Blur.lnk"

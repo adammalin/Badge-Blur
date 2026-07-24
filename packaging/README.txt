@@ -83,8 +83,10 @@ Limitations
 
 Stop
 ----
-Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
-tab leaves the local app available so it can be reopened quickly.
+Click "Quit Badge Blur" in the upper-right corner of the app and wait for the
+message that the private local service stopped. Then close the browser tab.
+If the tab was closed first, quit Badge Blur from the Dock or Activity Monitor.
+The launcher watchdog also stops the server if the launcher exits unexpectedly.
 
 Remove
 ------

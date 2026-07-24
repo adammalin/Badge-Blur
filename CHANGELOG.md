@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.17.0 — 2026-07-24
+
+- Adds a visible **Quit Badge Blur** control that performs an authenticated
+  same-origin shutdown and confirms when the local server has released its
+  port.
+- Gives every server launch a new random lifecycle token and bumps the local
+  API handshake to version 5 so an older page cannot invoke the new shutdown
+  path.
+- Adds a launcher-parent watchdog so the Node service shuts itself down if its
+  Mac or Windows launcher crashes or is forcibly closed.
+- Adds PID ownership tracking and conservative stale-process cleanup. Windows
+  verifies that a stale PID belongs to the Node executable inside the current
+  Badge Blur installation before terminating it.
+- Makes the Windows uninstaller request shutdown, verify the result, and abort
+  with an explanation instead of removing files while the local service is
+  still alive.
+- Adds a deterministic lifecycle regression covering invalid-token rejection,
+  graceful shutdown, port release, clean relaunch with a new process/token,
+  signal shutdown, and orphan-parent cleanup.
+- Runs the lifecycle regression on both native installer jobs while keeping
+  installer CI limited to manual dispatches and version tags.
+
 ## 0.16.0 — 2026-07-24
 
 - Adds a conventional macOS DMG containing `Badge Blur.app`, an Applications

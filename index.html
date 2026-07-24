@@ -31,12 +31,25 @@
           Originals remain untouched.
         </p>
       </div>
-      <div class="privacy-card" aria-label="Privacy status">
-        <span class="privacy-dot"></span>
-        <div>
-          <strong>No image uploads</strong>
-          <span>Inference and export stay on this computer.</span>
+      <div class="header-actions">
+        <div class="privacy-card" aria-label="Privacy status">
+          <span class="privacy-dot"></span>
+          <div>
+            <strong>No image uploads</strong>
+            <span>Inference and export stay on this computer.</span>
+          </div>
         </div>
+        <button
+          id="quitAppButton"
+          class="button secondary quit-app-button"
+          type="button"
+          disabled
+        >
+          Quit Badge Blur
+        </button>
+        <small id="quitAppHelp">
+          Stops the private local service. Then close this browser tab.
+        </small>
       </div>
     </header>
 

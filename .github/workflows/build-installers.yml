@@ -35,6 +35,9 @@ jobs:
       - name: Build Mac ZIP and DMG
         run: npm run package:mac
 
+      - name: Test local server lifecycle
+        run: npm run test:lifecycle
+
       - name: Verify Mac artifacts
         run: |
           cd releases
@@ -75,6 +78,9 @@ jobs:
 
       - name: Build production interface
         run: npm run build
+
+      - name: Test local server lifecycle
+        run: npm run test:lifecycle
 
       - name: Install NSIS
         shell: powershell
