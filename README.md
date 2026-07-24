@@ -192,10 +192,10 @@ test package.
 7. Badge Blur should open in Google Chrome or Microsoft Edge at a local
    `127.0.0.1` address. No Terminal window, account, Ollama installation, or
    internet connection is required after installation.
-8. Select the bundled `demo-test-images` folder, run a batch, review every
-   mask, and confirm that redacted copies and the run manifest are written to
-   a new uniquely named export folder. Confirm that the source images are
-   unchanged.
+8. Download and unzip the synthetic demo set described below. Select its
+   `demo-test-images` folder, run a batch, review every mask, and confirm that
+   redacted copies and the run manifest are written to a new uniquely named
+   export folder. Confirm that the source images are unchanged.
 9. Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
    tab does not stop the local app.
 
@@ -211,6 +211,31 @@ folders created by the tester are user data and are intentionally preserved.
 
 Apple's current instructions are available in
 [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
+
+### Synthetic demo test images
+
+The five fictional test photographs are tracked in
+[`demo-test-images/`](demo-test-images/). They contain 11 expected badge
+regions across single-person, event, group, outdoor-glare, and low-light
+scenarios. The people, organizations, badge designs, portraits, text-like
+marks, and code-like graphics are fictional; the set contains no ORNL, DOE, or
+valid employee badge information.
+
+- [Browse the individual test images](demo-test-images/)
+- [Download all five test images as a ZIP](downloads/Badge-Blur-Demo-Test-Images.zip?raw=1)
+- [Download the ZIP SHA-256 checksum](downloads/Badge-Blur-Demo-Test-Images.zip.sha256?raw=1)
+- [Read the expected badge counts and limitations](demo-test-images/README.md)
+
+The archive also includes the test-set README and original generation prompts.
+To rebuild it after an approved change to the canonical fixtures, run:
+
+```bash
+npm run package:demo-images
+```
+
+Synthetic images are appropriate for demonstrations and pipeline smoke tests,
+but they do not establish production accuracy. Continue to use human review
+and an approved, locally stored validation set for production qualification.
 
 ### Build packages from source
 
@@ -246,6 +271,10 @@ without a persistent Command Prompt, provides an Open/Quit tray menu, and
 registers a normal uninstaller under **Settings > Apps > Installed apps**.
 The GitHub Actions workflow builds the Mac ARM DMG/ZIP and Windows x64 setup
 executable on their matching hosted operating systems.
+
+Installer CI is intentionally not run for ordinary branch pushes. It runs only
+when started manually from the **Build installable apps** workflow or when a
+version tag matching `v*` is pushed.
 
 Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
 The Mac app has an ad-hoc integrity signature, but it is not Developer ID

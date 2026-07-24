@@ -1,5 +1,7 @@
 name: Build installable apps
 
+# Deliberately manual or version-tag only. Ordinary branch pushes must not
+# spend runner time rebuilding the model-heavy installers.
 on:
   workflow_dispatch:
   push:
