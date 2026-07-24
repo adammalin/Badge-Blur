@@ -40,6 +40,10 @@
   a recognized Badge Blur source-test folder in place while preserving models
   and user exports. Fresh setup now explicitly downloads and verifies the
   pinned local models before launch.
+- Makes the macOS source installer self-contained: if Node.js 22 is unavailable,
+  it downloads the pinned official runtime for the Mac architecture, verifies
+  it against Node's published SHA-256 list, and stores it privately inside the
+  removable source-test folder. A checked-in launcher reuses that runtime.
 - Ships verified Apple-silicon Mac ZIP/DMG and Windows x64 installer artifacts
   with SHA-256 checksums through the tag-only release workflow.
 

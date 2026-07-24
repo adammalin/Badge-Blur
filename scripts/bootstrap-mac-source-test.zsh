@@ -44,6 +44,10 @@ if [[ -e "${TARGET_DIRECTORY}" ]]; then
     print -u2 "Nothing was overwritten."
     exit 1
   fi
+  if ! command -v rsync >/dev/null 2>&1; then
+    print -u2 "rsync is required to update an existing source-test folder."
+    exit 1
+  fi
   UPDATE_EXISTING=1
 fi
 
@@ -83,6 +87,7 @@ if (( UPDATE_EXISTING )); then
   print "Preserving downloaded models, generated exports, and repository metadata."
   rsync -a --delete \
     --exclude "/.git/" \
+    --exclude "/.runtime/" \
     --exclude "/node_modules/" \
     --exclude "/public/models/" \
     --exclude "/public/vendor/" \

@@ -266,9 +266,14 @@ does not disable or alter Gatekeeper.
 Requirements:
 
 - An Apple-silicon Mac running macOS 13 or later.
-- Node.js 22 and npm installed through an approved route.
 - Internet access during first setup to download the pinned public npm
-  packages and local model files.
+  packages, official Node.js runtime when needed, and local model files.
+
+The setup uses an existing Node.js 22 installation when available. If Node is
+missing or incompatible, it downloads the pinned official Node.js 22 runtime
+for the Mac's architecture, verifies it against Node's published SHA-256 list,
+and keeps it privately inside `.runtime/` in the Badge Blur folder. It does not
+request administrator access or install Node system-wide.
 
 #### Two-command source setup
 
@@ -306,7 +311,7 @@ For later launches:
 
 ```bash
 cd Badge-Blur-source-test
-npm start
+zsh scripts/start-mac-source-test.zsh
 ```
 
 #### Manual source ZIP setup
@@ -335,11 +340,12 @@ window or press Command-Q to stop the app and its private local service.
 After the first setup, launch it again from the same source folder with:
 
 ```bash
-npm start
+zsh scripts/start-mac-source-test.zsh
 ```
 
 To remove this source-run copy, quit Badge Blur and delete the expanded source
-folder. Export folders are separate user data and are not deleted.
+folder. This also removes its private Node runtime and npm dependencies.
+Export folders are separate user data and are not deleted.
 
 This route is intended for development testing, not broad deployment. A
 Developer ID-signed and notarized build, or an organization-managed deployment,
