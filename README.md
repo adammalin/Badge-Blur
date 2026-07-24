@@ -163,6 +163,57 @@ software/model files. Image processing after setup is local.
 
 ## Installers and portable packages
 
+### Install and test on macOS
+
+The current Mac package supports Apple-silicon Macs running macOS 13 or later.
+Use the newest `Badge-Blur-Mac-arm64-vX.Y.Z.dmg` from a successful
+[**Build installable apps**](https://github.com/adammalin/Badge-Blur/actions/workflows/build-installers.yml)
+GitHub Actions run. The matching ZIP still works, but the DMG is the preferred
+test package.
+
+1. Download the Mac artifact and unzip the GitHub artifact if necessary.
+2. Optional but recommended: place the DMG and its `.sha256` file together,
+   open Terminal in that folder, and run:
+
+   ```bash
+   shasum -a 256 -c Badge-Blur-Mac-arm64-v*.dmg.sha256
+   ```
+
+3. Open the DMG and drag **Badge Blur.app** onto the **Applications**
+   shortcut.
+4. Open `/Applications/Badge Blur.app` once. Because this test build is not
+   Developer ID signed or notarized, macOS may block it. Dismiss the warning
+   without moving the app to the Trash.
+5. Open **System Settings > Privacy & Security**, scroll to **Security**, and
+   click **Open Anyway** for Badge Blur. Apple makes this option available for
+   about one hour after the blocked launch.
+6. Authenticate when prompted. When macOS shows the warning again, click
+   **Open**.
+7. Badge Blur should open in Google Chrome or Microsoft Edge at a local
+   `127.0.0.1` address. No Terminal window, account, Ollama installation, or
+   internet connection is required after installation.
+8. Select the bundled `demo-test-images` folder, run a batch, review every
+   mask, and confirm that redacted copies and the run manifest are written to
+   a new uniquely named export folder. Confirm that the source images are
+   unchanged.
+9. Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
+   tab does not stop the local app.
+
+After the first approved launch, macOS saves Badge Blur as an exception and it
+normally opens by double-clicking. Do not disable Gatekeeper globally or use
+commands that recursively remove quarantine attributes. On a managed Mac, the
+**Open Anyway** option may be unavailable; use the organization's approved
+software-distribution or support process instead.
+
+To uninstall, quit Badge Blur and move `/Applications/Badge Blur.app` to the
+Trash. The app installs no system extensions or background agents. Export
+folders created by the tester are user data and are intentionally preserved.
+
+Apple's current instructions are available in
+[Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
+
+### Build packages from source
+
 To create both offline packages from the same production build:
 
 ```bash
