@@ -71,7 +71,7 @@
           <summary>
             <span>
               Advanced settings
-              <small>Detection, mask, and blur controls</small>
+              <small>Detection, blur, and performance controls</small>
             </span>
           </summary>
           <div class="control-grid">
@@ -163,6 +163,19 @@
                 />
                 <output id="featherOutput">10%</output>
               </div>
+            </label>
+
+            <label>
+              Parallel processing
+              <select id="workerCountInput">
+                <option value="auto" selected>Auto (recommended)</option>
+                <option value="1">1 image at a time</option>
+                <option value="2">2 images at a time</option>
+                <option value="4">4 images at a time</option>
+              </select>
+              <small id="workerCountHelp">
+                Auto checks this computer and chooses a conservative worker count.
+              </small>
             </label>
           </div>
         </details>

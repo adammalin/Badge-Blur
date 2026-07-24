@@ -106,6 +106,33 @@ full-resolution source simultaneously. A representative soak test using
 hundreds or thousands of cleared camera files remains required before
 production deployment.
 
+## Parallel worker validation
+
+Version 0.13.0 adds a bounded worker pool with Auto/1/2/4 choices. Deterministic
+tests confirm that six queued items with two workers reach exactly two active
+tasks, process every item once, and report stable worker assignments. Worker
+policy tests cover low-resource, two-worker, four-worker, unknown-memory,
+slow-compute, and small-batch caps.
+
+The actual quantized Grounding DINO model was benchmarked locally on four
+synthetic images after warming both sessions:
+
+| Mode | Time | Relative throughput |
+| --- | ---: | ---: |
+| 1 model worker | 2.58 s | 1.00× |
+| 2 model workers | 2.48 s | 1.04× |
+
+The small model-only gain shows why the app also pipelines stages: detection
+of the next image can overlap the previous image's local Sharp
+redaction/metadata work, while file and manifest writes remain serialized.
+The live browser capability check reported 18 logical processors and a 32 GB
+memory signal, and Auto selected two workers. Four-worker mode remains a
+manual/high-memory qualification option.
+
+The complete 18-photo production-path regression was rerun after the worker
+changes and remained unchanged at 34/45 covered badge references (75.6%
+recall), 34 true-positive masks, 13 false-positive masks, and 72.3% precision.
+
 ## Bulk export validation boundary
 
 Version 0.11.0 uses the following bulk-export contract:

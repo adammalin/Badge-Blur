@@ -19,6 +19,7 @@ import {
   DEFAULT_FEATHER_PERCENT,
   DEFAULT_LABELS,
   DEFAULT_PADDING_PERCENT,
+  DEFAULT_REDACTION_STYLE,
   DEFAULT_REDACTION_STRENGTH,
   DEFAULT_THRESHOLD,
   MODEL_ID,
@@ -146,6 +147,7 @@ const report = {
   classifierModel: torsoGuided ? classifierModelId : null,
   classifierMargin: torsoGuided ? classifierMargin : null,
   paddingPercent: DEFAULT_PADDING_PERCENT,
+  redactionStyle: DEFAULT_REDACTION_STYLE,
   redactionStrength: DEFAULT_REDACTION_STRENGTH,
   featherPercent: DEFAULT_FEATHER_PERCENT,
   files: [],
@@ -374,6 +376,7 @@ for (let index = 0; index < imageNames.length; index += 1) {
   if (!skipRedaction) {
     const redacted = await redactImage(source, imageName, {
       masks,
+      style: DEFAULT_REDACTION_STYLE,
       strength: DEFAULT_REDACTION_STRENGTH,
       featherPercent: DEFAULT_FEATHER_PERCENT,
     });

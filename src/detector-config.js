@@ -15,5 +15,6 @@ export const CLASSIFIER_LABELS = [
   "a wall sign, sheet of paper, or equipment label",
 ];
 export const DEFAULT_PADDING_PERCENT = 18;
-export const DEFAULT_REDACTION_STRENGTH = 24;
+export const DEFAULT_REDACTION_STYLE = "gaussian";
+export const DEFAULT_REDACTION_STRENGTH = 3;
 export const DEFAULT_FEATHER_PERCENT = 10;

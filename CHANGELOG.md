@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.0 — 2026-07-24
+
+- Adds Auto, 1, 2, and 4-image parallel-processing choices under Advanced
+  settings.
+- Gives every parallel detector its own local Grounding DINO and CLIP model
+  session so simultaneous inference does not share mutable session state.
+- Uses a conservative local CPU/memory policy plus a short compute benchmark
+  for Auto; the current 18-logical-processor system selects two workers.
+- Overlaps detection with the previous image's sequential redaction/export so
+  the pipeline gains throughput even when multiple detector sessions contend
+  for the same CPU cores.
+- Keeps output files, metadata sidecars, and manifest writes serialized.
+- Makes preview decoding, carousel rendering, and preview cleanup safe when
+  multiple images are active.
+- Records the requested/resolved worker count, capability signals, per-image
+  worker assignment, and batch duration in the schema-version-8 manifest.
+- Adds deterministic worker-policy and worker-pool tests plus a reproducible
+  local model-worker benchmark.
+
 ## 0.12.0 — 2026-07-24
 
 - Uses a smooth, mask-size-aware Gaussian blur as the default redaction style.

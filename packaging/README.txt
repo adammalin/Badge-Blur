@@ -33,12 +33,15 @@ Use
 6. Drag over missed badges to add masks.
 7. Click a mask and drag its four corner handles to match the badge.
 8. Open Advanced settings only when you need to change detection, smooth
-   Gaussian blur strength, mask expansion, or edge feather.
+   Gaussian blur strength, mask expansion, edge feather, or parallel
+   processing.
 9. Click the red × at the lower-right edge of a false mask to remove it.
 10. Toggle Before and After to compare the editable mask and redacted export.
 
 Smooth Gaussian blur is the default. Advanced settings can adjust its strength
 or switch to the optional pixelated mosaic.
+Parallel processing defaults to Auto. Manual 1, 2, and 4-image modes are
+available; 4-image mode uses substantially more memory.
 
 The app does not modify or copy originals. As each image finishes, the app
 auto-saves it into a unique "exports/badge-remover-run-..." folder inside the
@@ -51,8 +54,8 @@ To revise an earlier batch, use "Import previous run," select its
 badge-removal-manifest.json, and reselect the original source folder. The app
 restores matching reviewed masks and settings locally.
 The current model does not retrain itself while the app is running.
-Detection and export run sequentially. The app keeps at most three bounded
-review previews in memory and reopens one full-resolution source at a time.
+Detection uses the selected bounded worker pool. Redaction, export, and
+manifest writes remain sequential to protect the run folder.
 Each output also gets a ".metadata.mie" archive. Writable photo metadata and
 the ICC profile are transferred. Embedded thumbnails/previews are excluded
 because they could reveal the unredacted badge. HEIC/HEIF input exports to

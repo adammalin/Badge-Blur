@@ -18,8 +18,14 @@ import {
   normalizeSourcePath,
   sourceRootName,
 } from "./run-storage.js";
+import {
+  describeWorkerSelection,
+  normalizeWorkerPreference,
+  resolveWorkerCount,
+} from "./worker-policy.js";
+import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.12.0";
+const APP_VERSION = "0.13.0";
 const IMAGE_API_VERSION = 4;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -57,6 +63,8 @@ const elements = {
   strengthHelp: document.querySelector("#strengthHelp"),
   featherInput: document.querySelector("#featherInput"),
   featherOutput: document.querySelector("#featherOutput"),
+  workerCountInput: document.querySelector("#workerCountInput"),
+  workerCountHelp: document.querySelector("#workerCountHelp"),
   loadModelButton: document.querySelector("#loadModelButton"),
   runAllButton: document.querySelector("#runAllButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
@@ -80,8 +88,7 @@ const elements = {
   pageStatus: document.querySelector("#pageStatus"),
 };
 
-let detector = null;
-let rescueClassifier = null;
+let modelWorkers = [];
 let items = [];
 let running = false;
 let activeIndex = 0;
@@ -94,7 +101,10 @@ let activeRun = null;
 let batchStartedAt = null;
 let batchTimer = null;
 let lastBatchDurationMs = null;
+let lastBatchWorkerCount = null;
+let computeBenchmarkScore = null;
 let exportQueue = Promise.resolve();
+let carouselRenderQueue = Promise.resolve();
 const itemExportTimers = new Map();
 
 elements.thresholdInput.addEventListener("input", () => {
@@ -122,6 +132,7 @@ elements.redactionStyleInput.addEventListener("change", () => {
   updateRedactionStyleUI();
   scheduleAllEditedExports();
 });
+elements.workerCountInput.addEventListener("change", updateWorkerCountUI);
 elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
@@ -150,6 +161,7 @@ document.addEventListener("keydown", (event) => {
 });
 updateButtons();
 updateRedactionStyleUI();
+updateWorkerCountUI();
 void verifyLocalServer();
 
 async function verifyLocalServer() {
@@ -262,6 +274,9 @@ async function setSelectedFiles(selected) {
     decodeError: null,
     previewUrl: null,
     previewImage: null,
+    previewPromise: null,
+    processing: false,
+    workerNumber: null,
     boxes: [],
     modelBoxes: [],
     selectedBoxId: null,
@@ -277,6 +292,7 @@ async function setSelectedFiles(selected) {
   }));
   activeIndex = 0;
   lastBatchDurationMs = null;
+  lastBatchWorkerCount = null;
   updateBatchTime();
 
   elements.emptyState.hidden = items.length > 0;
@@ -327,6 +343,10 @@ function restoreRunSettings(manifest) {
     manifest.redactionStyle === "gaussian" ? "gaussian" : "mosaic";
   elements.strengthOutput.value = elements.strengthInput.value;
   updateRedactionStyleUI();
+  elements.workerCountInput.value = normalizeWorkerPreference(
+    manifest.workerPreference,
+  );
+  updateWorkerCountUI();
   if (manifest.detectionPhrases) {
     elements.labelsInput.value = normalizeGroundingPrompt(
       manifest.detectionPhrases,
@@ -412,6 +432,7 @@ function releaseItems() {
 }
 
 function releasePreview(item) {
+  if (item.processing || item.previewPromise) return;
   if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
   if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
   item.previewUrl = null;
@@ -423,39 +444,41 @@ function releasePreview(item) {
 async function ensurePreview(item) {
   if (item.decodeError) throw new Error(item.decodeError);
   if (item.previewImage) return;
-  try {
-    const response = await localImageRequest("/api/image/decode", item.file);
-    item.imageInfo = response.info;
-    item.width = response.info.width;
-    item.height = response.info.height;
-    item.previewUrl = URL.createObjectURL(response.blob);
-    item.previewImage = await loadImage(item.previewUrl);
-  } catch (error) {
-    item.decodeError = error.message;
-    throw error;
-  }
+  if (item.previewPromise) return item.previewPromise;
+  item.previewPromise = (async () => {
+    try {
+      const response = await localImageRequest("/api/image/decode", item.file);
+      item.imageInfo = response.info;
+      item.width = response.info.width;
+      item.height = response.info.height;
+      item.previewUrl = URL.createObjectURL(response.blob);
+      item.previewImage = await loadImage(item.previewUrl);
+    } catch (error) {
+      item.decodeError = error.message;
+      throw error;
+    } finally {
+      item.previewPromise = null;
+    }
+  })();
+  return item.previewPromise;
 }
 
 async function loadModel() {
-  if (detector || running) return;
+  if (modelWorkers.length || running) return;
   setModelStatus("loading", "Loading local model…");
   elements.loadModelButton.disabled = true;
 
   try {
-    detector = await pipeline("zero-shot-object-detection", MODEL_ID, {
-      dtype: "q8",
-      device: "wasm",
-    });
-    setModelStatus("loading", "Loading local classifier…");
-    rescueClassifier = await pipeline(
-      "zero-shot-image-classification",
-      CLASSIFIER_MODEL_ID,
-      {
-        dtype: "q8",
-        device: "wasm",
-      },
+    modelWorkers.push(await loadModelWorker(1));
+    computeBenchmarkScore = runLocalComputeBenchmark();
+    updateWorkerCountUI();
+    const resolvedWorkers = resolveConfiguredWorkerCount();
+    const autoLabel =
+      elements.workerCountInput.value === "auto" ? "Auto: " : "";
+    setModelStatus(
+      "ready",
+      `Local models ready · ${autoLabel}${resolvedWorkers} worker${resolvedWorkers === 1 ? "" : "s"}`,
     );
-    setModelStatus("ready", "Local models ready");
     elements.loadModelButton.textContent = "Models loaded";
   } catch (error) {
     console.error(error);
@@ -471,44 +494,130 @@ async function loadModel() {
   }
 }
 
+async function loadModelWorker(workerNumber) {
+  setModelStatus("loading", `Loading detector for worker ${workerNumber}…`);
+  const workerDetector = await pipeline("zero-shot-object-detection", MODEL_ID, {
+    dtype: "q8",
+    device: "wasm",
+  });
+  try {
+    setModelStatus("loading", `Loading classifier for worker ${workerNumber}…`);
+    const workerClassifier = await pipeline(
+      "zero-shot-image-classification",
+      CLASSIFIER_MODEL_ID,
+      {
+        dtype: "q8",
+        device: "wasm",
+      },
+    );
+    return {
+      detector: workerDetector,
+      rescueClassifier: workerClassifier,
+      workerNumber,
+    };
+  } catch (error) {
+    await workerDetector.dispose?.();
+    throw error;
+  }
+}
+
+async function ensureModelWorkers(requestedCount) {
+  while (modelWorkers.length < requestedCount) {
+    const workerNumber = modelWorkers.length + 1;
+    showProgress(
+      `Preparing local model worker ${workerNumber} of ${requestedCount}…`,
+      0,
+    );
+    try {
+      modelWorkers.push(await loadModelWorker(workerNumber));
+    } catch (error) {
+      console.warn(`Could not prepare worker ${workerNumber}: ${error.message}`);
+      showProgress(
+        `Worker ${workerNumber} could not start. Continuing with ${modelWorkers.length}.`,
+        0,
+      );
+      break;
+    }
+  }
+  const activeCount = Math.max(1, Math.min(requestedCount, modelWorkers.length));
+  setModelStatus(
+    "ready",
+    `Local models ready · ${activeCount} worker${activeCount === 1 ? "" : "s"}`,
+  );
+  return activeCount;
+}
+
 async function runAll() {
-  if (!detector || running || items.length === 0) return;
+  if (!modelWorkers.length || running || items.length === 0) return;
   running = true;
+  lastBatchWorkerCount = null;
   batchStartedAt = performance.now();
   startBatchTimer();
   updateButtons();
   elements.progressWrap.hidden = false;
   await ensureExportRun({ allowPrompt: true });
+  const requestedCount = resolveConfiguredWorkerCount();
+  const workerCount = await ensureModelWorkers(requestedCount);
+  lastBatchWorkerCount = workerCount;
+  updateBatchTime();
+  const activeIndices = new Set();
+  const pendingExports = [];
+  let completed = 0;
 
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    activeIndex = index;
-    await renderCarousel();
-    const itemStartedAt = performance.now();
-    showProgress(
-      `Analyzing ${index + 1} of ${items.length}: ${item.file.name}`,
-      (index / items.length) * 100,
-    );
-    const detectionStartedAt = performance.now();
-    await detectItem(item);
-    const detectionMs = performance.now() - detectionStartedAt;
-    const exportStartedAt = performance.now();
-    await queueItemExport(item, { updatePreview: true });
-    const exportMs = performance.now() - exportStartedAt;
-    item.timing = {
-      detectionMs,
-      exportMs,
-      totalMs: performance.now() - itemStartedAt,
-    };
-    renderItemStatus(item);
-    if (!isItemVisible(item)) releasePreview(item);
-  }
+  await runWorkerPool(
+    modelWorkers.slice(0, workerCount),
+    items.length,
+    async (models, index, workerIndex) => {
+      const item = items[index];
+      const itemStartedAt = performance.now();
+      item.processing = true;
+      item.workerNumber = workerIndex + 1;
+      activeIndices.add(index);
+      activeIndex = Math.min(...activeIndices);
+      await queueCarouselRender();
+      showBatchWorkerProgress(completed, activeIndices.size, workerCount);
+
+      try {
+        const detectionStartedAt = performance.now();
+        await detectItem(item, models);
+        const detectionMs = performance.now() - detectionStartedAt;
+        item.timing = {
+          detectionMs,
+          exportMs: 0,
+          totalMs: detectionMs,
+        };
+        if (item.status === "detected") {
+          const exportPromise = queueItemExport(item, {
+            updatePreview: isItemVisible(item),
+          }).finally(() => {
+            item.timing.totalMs = performance.now() - itemStartedAt;
+            completed += 1;
+            showBatchWorkerProgress(completed, activeIndices.size, workerCount);
+            renderItemStatus(item);
+          });
+          pendingExports.push(exportPromise);
+        } else {
+          item.exportStatus = "Not exported because detection failed";
+          completed += 1;
+        }
+        renderItemStatus(item);
+      } finally {
+        item.processing = false;
+        activeIndices.delete(index);
+        activeIndex = activeIndices.size ? Math.min(...activeIndices) : index;
+        showBatchWorkerProgress(completed, activeIndices.size, workerCount);
+        await queueCarouselRender();
+        if (!isItemVisible(item)) releasePreview(item);
+      }
+    },
+  );
+  await Promise.all(pendingExports);
 
   lastBatchDurationMs = performance.now() - batchStartedAt;
   stopBatchTimer();
   await writeRunMetadata();
   showProgress(
-    `Batch finished in ${formatDuration(lastBatchDurationMs)}. Review the centered images; edits auto-save.`,
+    `Batch finished with ${workerCount} worker${workerCount === 1 ? "" : "s"} in ${formatDuration(lastBatchDurationMs)}. Review the centered images; edits auto-save.`,
     100,
   );
   running = false;
@@ -517,17 +626,22 @@ async function runAll() {
   updateSummary();
 }
 
-async function detectItem(item) {
+async function detectItem(item, models = modelWorkers[0]) {
   item.status = "running";
-  item.message = "Detecting…";
+  item.message = item.workerNumber
+    ? `Worker ${item.workerNumber} · detecting…`
+    : "Detecting…";
   renderItemStatus(item);
 
   try {
+    if (!models?.detector || !models?.rescueClassifier) {
+      throw new Error("A local model worker is not ready.");
+    }
     await ensurePreview(item);
     const prompt = normalizeGroundingPrompt(elements.labelsInput.value);
     elements.labelsInput.value = prompt;
     const threshold = Number(elements.thresholdInput.value);
-    const output = await detector(item.previewUrl, [prompt], {
+    const output = await models.detector(item.previewUrl, [prompt], {
       threshold,
       top_k: 40,
     });
@@ -548,7 +662,7 @@ async function detectItem(item) {
       }),
     );
     const torsoRescues = elements.enhancedInput.checked
-      ? await detectTorsoRescues(item, prompt, modelBoxes)
+      ? await detectTorsoRescues(item, prompt, modelBoxes, models)
       : [];
     const detectedBoxes = mergeGlobalWithTorsoRescues(
       modelBoxes,
@@ -569,7 +683,11 @@ async function detectItem(item) {
   }
 
   if (document.querySelector(`[data-item-id="${item.id}"]`)) {
-    await ensurePreview(item);
+    try {
+      await ensurePreview(item);
+    } catch {
+      await ensureErrorPreview(item);
+    }
     renderItemStatus(item);
     drawItem(item);
   }
@@ -587,10 +705,10 @@ function normalizeGroundingPrompt(value) {
   return `${prompt || "identification badge"}.`;
 }
 
-async function detectTorsoRescues(item, prompt, globalBoxes) {
+async function detectTorsoRescues(item, prompt, globalBoxes, models) {
   const scaleX = item.width / item.previewImage.naturalWidth;
   const scaleY = item.height / item.previewImage.naturalHeight;
-  const personOutput = await detector(item.previewUrl, ["person."], {
+  const personOutput = await models.detector(item.previewUrl, ["person."], {
     threshold: PERSON_THRESHOLD,
     top_k: 30,
   });
@@ -626,7 +744,7 @@ async function detectTorsoRescues(item, prompt, globalBoxes) {
     });
     const torsoUrl = URL.createObjectURL(torso.blob);
     try {
-      const output = await detector(torsoUrl, [prompt], {
+      const output = await models.detector(torsoUrl, [prompt], {
         threshold: TORSO_THRESHOLD,
         top_k: 30,
       });
@@ -657,7 +775,7 @@ async function detectTorsoRescues(item, prompt, globalBoxes) {
         ) {
           continue;
         }
-        if (await classifyTorsoRescue(item, mapped)) {
+        if (await classifyTorsoRescue(item, mapped, models)) {
           candidates.push(
             withRectangleCorners({
               ...mapped,
@@ -678,7 +796,7 @@ async function detectTorsoRescues(item, prompt, globalBoxes) {
   return deduplicateBadgeDetections(candidates, 0.32);
 }
 
-async function classifyTorsoRescue(item, box) {
+async function classifyTorsoRescue(item, box, models) {
   const region = paddedBoxRegion(box, item.width, item.height, 1.15);
   const patch = await localImageRequest("/api/image/crop", item.file, {
     region,
@@ -688,7 +806,10 @@ async function classifyTorsoRescue(item, box) {
   });
   const patchUrl = URL.createObjectURL(patch.blob);
   try {
-    const classifications = await rescueClassifier(patchUrl, CLASSIFIER_LABELS);
+    const classifications = await models.rescueClassifier(
+      patchUrl,
+      CLASSIFIER_LABELS,
+    );
     const scores = Object.fromEntries(
       classifications.map(({ label, score }) => [label, Number(score)]),
     );
@@ -863,7 +984,7 @@ async function renderCarousel() {
   const visibleItems = carouselItems();
 
   for (const item of items) {
-    if (!visibleItems.includes(item)) releasePreview(item);
+    if (!visibleItems.includes(item) && !item.processing) releasePreview(item);
   }
 
   elements.reviewGrid.replaceChildren();
@@ -888,6 +1009,13 @@ async function renderCarousel() {
     renderItem(item, slot, offset === 0);
   }
   updateCarouselControls();
+}
+
+function queueCarouselRender() {
+  carouselRenderQueue = carouselRenderQueue
+    .catch(() => undefined)
+    .then(() => renderCarousel());
+  return carouselRenderQueue;
 }
 
 function carouselItems() {
@@ -963,10 +1091,11 @@ function renderItem(item, slot, isActive) {
     const canvas = card.querySelector("canvas");
     setupCanvasInteraction(canvas, item);
     card.querySelector(".detect-one").addEventListener("click", async () => {
-      if (!detector) await loadModel();
-      if (!detector) return;
+      if (!modelWorkers.length) await loadModel();
+      if (!modelWorkers.length) return;
       const startedAt = performance.now();
-      await detectItem(item);
+      item.workerNumber = 1;
+      await detectItem(item, modelWorkers[0]);
       item.timing = {
         detectionMs: performance.now() - startedAt,
         exportMs: 0,
@@ -1007,7 +1136,7 @@ function renderItem(item, slot, isActive) {
     ? "Not processed"
     : `${item.width} × ${item.height}${conversion}`;
   card.querySelector(".item-timing").textContent = item.timing
-    ? `Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
+    ? `${item.workerNumber ? `Worker ${item.workerNumber} · ` : ""}Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
     : "Timing available after processing";
   card.querySelector(".export-status").textContent = item.exportStatus;
   card.querySelector(".detect-one").disabled = Boolean(item.decodeError);
@@ -1027,7 +1156,7 @@ function renderItemStatus(item) {
   const timing = card.querySelector(".item-timing");
   if (timing) {
     timing.textContent = item.timing
-      ? `Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
+      ? `${item.workerNumber ? `Worker ${item.workerNumber} · ` : ""}Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
       : "Timing available after processing";
   }
   const exportStatus = card.querySelector(".export-status");
@@ -1717,7 +1846,7 @@ async function writeRunMetadata() {
 
 function buildRunManifest() {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     appVersion: APP_VERSION,
     runId: activeRun.runId,
     runFolderName: activeRun.runFolderName,
@@ -1736,6 +1865,15 @@ function buildRunManifest() {
     redactionStrength: Number(elements.strengthInput.value),
     redactionStyle: elements.redactionStyleInput.value,
     featherPercent: Number(elements.featherInput.value),
+    workerPreference: elements.workerCountInput.value,
+    workerCount: lastBatchWorkerCount,
+    workerCapabilities: {
+      hardwareConcurrency: workerCapabilities().hardwareConcurrency,
+      deviceMemory: workerCapabilities().deviceMemory,
+      computeScore: computeBenchmarkScore == null
+        ? null
+        : Number(computeBenchmarkScore.toFixed(1)),
+    },
     batchDurationMs: lastBatchDurationMs,
     files: items
       .filter((item) => item.exportRevision >= 0)
@@ -1774,6 +1912,7 @@ function manifestEntry(item) {
     processingTimeMs: item.timing?.totalMs || null,
     detectionTimeMs: item.timing?.detectionMs || null,
     exportTimeMs: item.timing?.exportMs || null,
+    workerNumber: item.workerNumber,
     initialModelMaskCount: initialModelMasks.length,
     initialModelMasks,
     reviewedMaskCount: finalMasks.length,
@@ -2079,16 +2218,29 @@ function updateButtons() {
   const hasProcessableItems = items.some((item) => !item.decodeError);
   const hasDetectedItems = items.some((item) => item.status === "detected");
   elements.runAllButton.disabled =
-    !serverReady || !detector || !hasProcessableItems || running;
+    !serverReady || !modelWorkers.length || !hasProcessableItems || running;
   elements.exportAllButton.disabled =
     !serverReady || !hasDetectedItems || running;
-  elements.loadModelButton.disabled = !serverReady || Boolean(detector) || running;
+  elements.loadModelButton.disabled =
+    !serverReady || Boolean(modelWorkers.length) || running;
   elements.chooseSourceButton.disabled = !serverReady || running;
   elements.folderInput.disabled = !serverReady || running;
   elements.changeExportButton.disabled =
     !serverReady || running || typeof window.showDirectoryPicker !== "function";
   elements.resetExportButton.disabled = !serverReady || running;
   elements.importRunButton.disabled = !serverReady || running;
+  for (const control of [
+    elements.labelsInput,
+    elements.enhancedInput,
+    elements.thresholdInput,
+    elements.paddingInput,
+    elements.redactionStyleInput,
+    elements.strengthInput,
+    elements.featherInput,
+    elements.workerCountInput,
+  ]) {
+    control.disabled = running;
+  }
   updateCarouselControls();
 }
 
@@ -2107,6 +2259,64 @@ function updateRedactionStyleUI() {
   elements.strengthHelp.textContent = gaussian
     ? `${elements.strengthInput.value}% of the badge's shorter edge.`
     : `Block scale ${elements.strengthInput.value} of 12.`;
+}
+
+function workerCapabilities() {
+  return {
+    hardwareConcurrency: navigator.hardwareConcurrency || 4,
+    deviceMemory: navigator.deviceMemory || null,
+    computeScore: computeBenchmarkScore,
+  };
+}
+
+function resolveConfiguredWorkerCount(batchSize = items.length || Infinity) {
+  return resolveWorkerCount(
+    elements.workerCountInput.value,
+    workerCapabilities(),
+    batchSize,
+  );
+}
+
+function updateWorkerCountUI() {
+  const preference = normalizeWorkerPreference(elements.workerCountInput.value);
+  elements.workerCountInput.value = preference;
+  const resolved = resolveConfiguredWorkerCount();
+  let description = describeWorkerSelection(
+    preference,
+    resolved,
+    workerCapabilities(),
+  );
+  if (preference === "4") {
+    description += " · high-memory mode";
+  } else if (preference === "auto") {
+    description += computeBenchmarkScore == null
+      ? " · compute benchmark runs after model load"
+      : " · benchmarked locally";
+  }
+  elements.workerCountHelp.textContent = description;
+}
+
+function runLocalComputeBenchmark(durationMs = 60) {
+  const startedAt = performance.now();
+  let operations = 0;
+  let state = 0x12345678;
+  while (performance.now() - startedAt < durationMs) {
+    for (let index = 0; index < 1000; index += 1) {
+      state = Math.imul(state ^ (state >>> 13), 0x5bd1e995);
+    }
+    operations += 1000;
+  }
+  // Retain the state so an optimizing engine cannot discard the loop.
+  if (state === 0) console.debug(state);
+  return operations / Math.max(1, performance.now() - startedAt);
+}
+
+function showBatchWorkerProgress(completed, active, workerCount) {
+  const percent = items.length ? (completed / items.length) * 100 : 0;
+  showProgress(
+    `${completed} of ${items.length} finished · ${active} active · ${workerCount} worker${workerCount === 1 ? "" : "s"}`,
+    percent,
+  );
 }
 
 function showProgress(text, percent) {
@@ -2130,10 +2340,16 @@ function stopBatchTimer() {
 function updateBatchTime() {
   if (batchTimer && batchStartedAt != null) {
     elements.batchTime.textContent =
-      `Processing · ${formatDuration(performance.now() - batchStartedAt)}`;
+      `Processing · ${formatDuration(performance.now() - batchStartedAt)}` +
+      (lastBatchWorkerCount
+        ? ` · ${lastBatchWorkerCount} worker${lastBatchWorkerCount === 1 ? "" : "s"}`
+        : "");
   } else if (lastBatchDurationMs != null) {
     elements.batchTime.textContent =
-      `Last batch · ${formatDuration(lastBatchDurationMs)}`;
+      `Last batch · ${formatDuration(lastBatchDurationMs)}` +
+      (lastBatchWorkerCount
+        ? ` · ${lastBatchWorkerCount} worker${lastBatchWorkerCount === 1 ? "" : "s"}`
+        : "");
   } else {
     elements.batchTime.textContent = "Not started";
   }

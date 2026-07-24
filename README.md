@@ -91,7 +91,8 @@ verify it and obtain any missing small files.
 8. Drag over a missed badge to add a mask.
 9. Click a mask and drag its four corner handles to match badge perspective.
 10. Open **Advanced settings** only when you need to change detection,
-    Gaussian blur strength, mask expansion, or edge feather.
+    Gaussian blur strength, mask expansion, edge feather, or parallel
+    processing.
 11. Click a false mask and use **Remove selected** or the Delete key.
 12. Toggle **Before · edit masks** and **After · exported** to compare the
     current mask with its redacted output.
@@ -100,6 +101,12 @@ The default redaction is a smooth Gaussian blur sized to 3% of the badge's
 shorter edge. The Advanced settings panel can increase or decrease that
 strength or switch to the optional pixelated mosaic style. Changing a
 redaction setting refreshes and re-saves completed outputs in the active run.
+
+Parallel processing defaults to **Auto**. The app uses logical-processor and
+browser memory signals plus a short local compute benchmark to select one, two,
+or four detector workers conservatively. Manual 1/2/4 choices are available
+for controlled testing. Each worker owns a separate Grounding DINO and CLIP
+session; final files and manifests are still written one at a time.
 
 Each processed image is saved progressively into
 `source-folder/exports/badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` by default.
@@ -143,9 +150,11 @@ The MIE archive preserves the remaining source metadata for audit/recovery.
 - Bulk export uses the folder-write API in Microsoft Edge or Google Chrome and
   writes files sequentially into the source folder's `exports` subfolder
   unless the reviewer chooses another destination.
-- Detection and export use a sequential queue. Only three bounded 1200-pixel
-  review previews are retained at once; full-resolution sources are opened one
-  at a time for detection and export.
+- Detection uses the selected bounded worker pool while redaction/export and
+  audit-manifest writes remain sequential. Detection can overlap the previous
+  image's local export. Only three bounded 1200-pixel review previews plus
+  active worker previews are retained; full-resolution sources are opened only
+  for the active processing stages.
 
 The one-time setup step does contact npm and Hugging Face to download public
 software/model files. Image processing after setup is local.
@@ -209,6 +218,12 @@ applicable ORNL security and software-management review.
 - Enhanced mode is substantially slower because it runs a person pass, one
   badge pass per torso, and a classifier on rescue candidates. Turn it off for
   the faster v0.9-style full-image pass.
+- More detector workers are not guaranteed to scale linearly because each
+  ONNX session competes for CPU and memory bandwidth. On the development
+  workstation, two model workers were 1.04× faster than one on the four-image
+  detector benchmark; pipeline overlap can provide additional batch benefit.
+- Four-worker mode is intentionally marked as high-memory and should be
+  qualified on the actual Windows or Mac workstation before large batches.
 - RAW files, multi-page images, and images above 8 bits per channel are
   rejected instead of being silently developed, flattened, or reduced.
 - HEIC/HEIF output is TIFF, not HEIC/HEIF.
