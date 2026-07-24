@@ -435,7 +435,7 @@ function chooseRunningQuitMode() {
   });
 }
 
-async function chooseSourceFolder({ promptedByImport = false } = {}) {
+async function chooseSourceFolder() {
   if (!serverReady || running) return;
   if (typeof window.showDirectoryPicker !== "function") {
     elements.folderInput.click();
@@ -464,11 +464,6 @@ async function chooseSourceFolder({ promptedByImport = false } = {}) {
     if (error.name !== "AbortError") {
       console.error(error);
       showProgress(`Could not open the source folder: ${error.message}`, 0);
-    } else if (promptedByImport && expectedSourceFolderName) {
-      showProgress(
-        `Run file loaded. Choose the original source folder named ${expectedSourceFolderName}.`,
-        100,
-      );
     }
   }
 }
@@ -602,7 +597,6 @@ async function importPreviousRun(event) {
       );
       elements.chooseSourceButton.textContent =
         `Choose “${importInfo.sourceRootName}” folder`;
-      await chooseSourceFolder({ promptedByImport: true });
       return;
     }
     await restoreImportedRun();
