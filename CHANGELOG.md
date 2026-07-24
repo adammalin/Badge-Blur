@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0 — 2026-07-24
+
+- Adds **Pause after active images** and **Resume batch** controls. Pausing
+  stops the bounded worker pool from claiming new images while active images
+  finish detection, redaction, metadata archiving, and serialized export.
+- Writes `badge-blur-checkpoint.json` into the active run folder at batch
+  start and after every image export, preserving queue state, reviewed masks,
+  settings, source fingerprints, and output revisions.
+- Restores an interrupted batch into the same run folder after verifying the
+  checkpoint run ID and matching source file size and last-modified time.
+  Completed exports are skipped; detected-but-unsaved masks are exported; and
+  interrupted, pending, or failed entries are retried.
+- Adds a three-choice quit flow during processing: keep processing, quit
+  immediately, or pause safely and quit. Native Electron window close and
+  application Quit use the same renderer checkpoint flow before stopping the
+  private local service.
+- Adds deterministic checkpoint/recovery and graceful worker-pool pause tests.
+- Keeps this release source-only for testing; no 0.19.0 installer artifacts
+  were built.
+
 ## 0.18.0 — 2026-07-24
 
 - Converts Badge Blur into a complete Electron desktop application for macOS

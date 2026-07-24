@@ -1,4 +1,9 @@
-export async function runWorkerPool(workers, itemCount, processItem) {
+export async function runWorkerPool(
+  workers,
+  itemCount,
+  processItem,
+  { shouldContinue = () => true } = {},
+) {
   if (!Array.isArray(workers) || workers.length === 0) {
     throw new Error("At least one worker is required.");
   }
@@ -9,6 +14,7 @@ export async function runWorkerPool(workers, itemCount, processItem) {
   await Promise.all(
     workers.map(async (worker, workerIndex) => {
       while (nextIndex < count) {
+        if (!shouldContinue()) break;
         const index = nextIndex;
         nextIndex += 1;
         assignments[index] = workerIndex + 1;

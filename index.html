@@ -8,7 +8,7 @@
       content="default-src 'self'; img-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; worker-src 'self' blob:;"
     />
     <meta name="referrer" content="no-referrer" />
-    <meta name="badge-blur-version" content="0.18.0" />
+    <meta name="badge-blur-version" content="0.19.0" />
     <title>Badge Blur</title>
     <link rel="icon" type="image/png" href="/badge-blur.png" />
     <link rel="apple-touch-icon" href="/badge-blur.png" />
@@ -203,6 +203,14 @@
           <button id="runAllButton" class="button primary" disabled>
             Start batch
           </button>
+          <button
+            id="pauseResumeButton"
+            class="button secondary"
+            hidden
+            disabled
+          >
+            Pause after active images
+          </button>
           <button id="exportAllButton" class="button success" disabled>
             Re-export all
           </button>
@@ -239,9 +247,11 @@
           </div>
         </div>
         <aside class="instruction">
-          To revise an earlier batch, import its
-          <strong>badge-removal-manifest.json</strong>, then choose the original
-          source folder. Reviewed masks and settings will be restored locally.
+          To resume an interrupted batch, import its
+          <strong>badge-blur-checkpoint.json</strong>, choose that existing run
+          folder, then choose the original source folder. To revise a completed
+          batch into a new run, import its
+          <strong>badge-removal-manifest.json</strong>.
         </aside>
 
         <aside id="exportCompatibility" class="instruction warning" hidden>
@@ -298,6 +308,25 @@
         <div id="reviewGrid" class="review-carousel"></div>
       </section>
     </main>
+
+    <dialog id="quitDialog" class="quit-dialog">
+      <h2>Batch processing is still running</h2>
+      <p>
+        Safe quit stops new assignments, finishes the active images, saves the
+        checkpoint, and then closes Badge Blur.
+      </p>
+      <div class="dialog-actions">
+        <button id="quitDialogCancel" class="button secondary" type="button">
+          Keep processing
+        </button>
+        <button id="quitDialogImmediate" class="button danger" type="button">
+          Quit immediately
+        </button>
+        <button id="quitDialogSafe" class="button primary" type="button">
+          Pause and quit safely
+        </button>
+      </div>
+    </dialog>
 
     <footer>
       MVP output is for review, not proof that every badge was found. Embedded

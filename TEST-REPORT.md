@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-24
-Release: `0.18.0`
+Source version: `0.19.0`; latest packaged Electron release: `0.18.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -129,6 +129,29 @@ The packaged Apple-silicon app separately passed ad-hoc signature validation,
 DMG verification, ZIP integrity, Electron/version identification, bundled
 directory-picker capability, local-only origin validation, and clean service
 shutdown.
+
+## Pause and crash-recovery validation
+
+Version 0.19.0 is source-only and does not replace the 0.18.0 installer
+artifacts. Deterministic tests confirm:
+
+- a pause request prevents the bounded worker pool from claiming new work
+  while allowing already active work to finish;
+- exported images whose saved revision matches their edit revision are marked
+  complete and skipped on resume;
+- active, queued, and failed entries remain retryable;
+- detected entries with reviewed masks but no completed export resume at the
+  export stage without rerunning detection;
+- checkpoint summaries retain completed, pending, active, and failed counts;
+  and
+- malformed or unrelated JSON is not accepted as a resumable checkpoint.
+
+The source build also passed the Electron smoke test for the bundled directory
+picker, private loopback origin, Electron runtime identity, and clean service
+shutdown. A visible local UI check confirmed automatic model readiness,
+collapsed Advanced settings defaults, and the new checkpoint recovery
+instructions. A deliberate mid-inference process-kill test with a large
+cleared batch remains a recommended soak-test item before production use.
 
 ## Parallel worker validation
 

@@ -480,10 +480,48 @@ output {
   color: #344139;
 }
 
+.button.danger {
+  border-color: #efb4b4;
+  background: #fff4f4;
+  color: var(--red);
+}
+
 .button.small {
   min-height: 36px;
   padding: 0.45rem 0.65rem;
   font-size: 0.78rem;
+}
+
+.quit-dialog {
+  max-width: 640px;
+  padding: 1.6rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 80px rgb(18 35 25 / 28%);
+}
+
+.quit-dialog::backdrop {
+  background: rgb(13 25 19 / 48%);
+  backdrop-filter: blur(3px);
+}
+
+.quit-dialog h2 {
+  margin-top: 0;
+}
+
+.quit-dialog p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 1.4rem;
 }
 
 .progress-wrap {

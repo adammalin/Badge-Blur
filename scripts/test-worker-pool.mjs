@@ -25,11 +25,27 @@ assert.deepEqual([...processed.map(({ index }) => index)].sort((a, b) => a - b),
 assert.ok(assignments.every((workerNumber) => workerNumber === 1 || workerNumber === 2));
 assert.rejects(() => runWorkerPool([], 1, async () => {}), /At least one worker/);
 
+let continuePausedPool = true;
+const pausedProcessed = [];
+await runWorkerPool(
+  workers,
+  8,
+  async (_worker, index) => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    pausedProcessed.push(index);
+    if (index === 0) continuePausedPool = false;
+  },
+  { shouldContinue: () => continuePausedPool },
+);
+assert.ok(pausedProcessed.length >= 1 && pausedProcessed.length <= workers.length);
+assert.ok(pausedProcessed.every((index) => index < workers.length));
+
 console.log(
   JSON.stringify({
     passed: true,
     itemCount: processed.length,
     maximumActive,
     assignments,
+    gracefulPauseProcessed: pausedProcessed,
   }),
 );

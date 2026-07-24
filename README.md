@@ -73,21 +73,25 @@ verify it and obtain any missing small files.
    HEIC/HEIF images.
 2. Wait for the bundled local models to load automatically.
 3. Choose **Start batch**.
-4. Grounding DINO runs one period-delimited grounding prompt over each image.
-5. With **Enhanced detection and filtering** enabled, the app uses CLIP to
+4. To stop claiming new images without losing progress, choose **Pause after
+   active images**. Active images finish and save before the batch enters its
+   paused state. Choose **Resume batch** to continue in the same run folder;
+   already completed images are skipped.
+5. Grounding DINO runs one period-delimited grounding prompt over each image.
+6. With **Enhanced detection and filtering** enabled, the app uses CLIP to
    reject only strongly negative lower-confidence full-image candidates, then
    detects people and searches enlarged upper-torso crops for missed badges.
-6. The local corner fitter refines strong badge edges and keeps a rectangle
+7. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
-7. Review the centered image in the left-to-right carousel. Its immediate
+8. Review the centered image in the left-to-right carousel. Its immediate
    neighbors remain visible as smaller previews.
-8. Drag over a missed badge to add a mask.
-9. Click a mask and drag its four corner handles to match badge perspective.
-10. Open **Advanced settings** only when you need to change detection,
+9. Drag over a missed badge to add a mask.
+10. Click a mask and drag its four corner handles to match badge perspective.
+11. Open **Advanced settings** only when you need to change detection,
     Gaussian blur strength, mask expansion, edge feather, or parallel
     processing.
-11. Click a false mask and use **Remove selected** or the Delete key.
-12. Toggle **Before · edit masks** and **After · exported** to compare the
+12. Click a false mask and use **Remove selected** or the Delete key.
+13. Toggle **Before · edit masks** and **After · exported** to compare the
     current mask with its redacted output.
 
 The default redaction is a smooth Gaussian blur sized to 3% of the badge's
@@ -107,10 +111,14 @@ Each processed image is saved progressively into
 run. Every run folder contains redacted
 copies, an adjacent `.metadata.mie` metadata archive for each copy, plus
 `badge-removal-manifest.json` and
-`badge-training-annotations.coco.json`. The timestamp and random run ID prevent
-a new export from reusing or overwriting an older run folder. Source
-subfolders are preserved inside each run so duplicate filenames from different
-folders do not collide.
+`badge-training-annotations.coco.json`. While a batch is running, it also
+updates `badge-blur-checkpoint.json` after each serialized image export. The
+checkpoint records completed, pending, active, and failed entries plus the
+reviewed masks and settings needed to recover the queue. At most the images
+that were actively processing at the instant of a crash need to be retried.
+The timestamp and random run ID prevent a new export from reusing or
+overwriting an older run folder. Source subfolders are preserved inside each
+run so duplicate filenames from different folders do not collide.
 
 Original images remain read-only and are deliberately not copied into the
 output. Keeping the originals out avoids duplicating unredacted sensitive
@@ -119,6 +127,20 @@ choose its `badge-removal-manifest.json`, and reselect the original source
 folder. The app restores final reviewed masks and run settings by relative path
 and verifies the source file size before applying them. It can also restore a
 run created by an earlier app version that contains compatible reviewed masks.
+
+To resume an interrupted batch in place, click **Import previous run**, choose
+the run's `badge-blur-checkpoint.json`, choose that exact existing run folder,
+then reselect the original source folder. Badge Blur verifies both the run ID
+and each source file's size and last-modified timestamp. It restores completed
+files without rewriting them, queues detected-but-unsaved masks for export,
+and retries interrupted, pending, or failed detection entries. A normal
+manifest import still creates a new run when revising a completed batch.
+
+Closing the Electron window or pressing Command-Q/Alt-F4 during a batch offers
+three choices: keep processing, quit immediately, or pause safely and quit.
+The safe option finishes and saves active images, writes the checkpoint, then
+stops the private local service. Closing while already paused writes the
+paused checkpoint before shutdown.
 
 The COCO file records final reviewed quadrilaterals and COCO bounding boxes for
 later local model training; it does not train or alter the bundled model during
@@ -154,6 +176,12 @@ The one-time setup step does contact npm and Hugging Face to download public
 software/model files. Image processing after setup is local.
 
 ## Installers and portable packages
+
+The pause/resume and crash-checkpoint work is currently available as the
+source-only `0.19.0` version. Per the current testing plan, no `0.19.0`
+installer artifacts were produced. The most recent installable Electron
+artifacts remain `0.18.0`; use the source instructions below to test the newer
+workflow.
 
 ### Install and test on macOS
 

@@ -1,7 +1,7 @@
 {
   "name": "badge-blur",
   "productName": "Badge Blur",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "private": true,
   "description": "Local-only desktop app for detecting and redacting identification badges.",
   "author": "UT-Battelle LLC",
@@ -25,6 +25,7 @@
     "test:worker-pool": "node scripts/test-worker-pool.mjs",
     "test:classifier-policy": "node scripts/test-classifier-policy.mjs",
     "test:run-storage": "node scripts/test-run-storage.mjs",
+    "test:checkpoint": "node scripts/test-checkpoint.mjs",
     "test:lifecycle": "node scripts/test-server-lifecycle.mjs",
     "test:electron": "npm run build && cross-env BADGE_BLUR_SMOKE_TEST=1 electron-forge start",
     "test:badge-set": "node scripts/evaluate-badge-set.mjs",

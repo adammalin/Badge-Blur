@@ -28,13 +28,22 @@ import {
   sourceRootName,
 } from "./run-storage.js";
 import {
+  CHECKPOINT_DOCUMENT_TYPE,
+  CHECKPOINT_SCHEMA_VERSION,
+  checkpointStatusForItem,
+  isBatchCheckpoint,
+  recoveryStatusForEntry,
+  shouldProcessItem,
+  summarizeCheckpointFiles,
+} from "./checkpoint.js";
+import {
   describeWorkerSelection,
   normalizeWorkerPreference,
   resolveWorkerCount,
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.18.0";
+const APP_VERSION = "0.19.0";
 const IMAGE_API_VERSION = 5;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -76,6 +85,7 @@ const elements = {
   workerCountHelp: document.querySelector("#workerCountHelp"),
   loadModelButton: document.querySelector("#loadModelButton"),
   runAllButton: document.querySelector("#runAllButton"),
+  pauseResumeButton: document.querySelector("#pauseResumeButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
   changeExportButton: document.querySelector("#changeExportButton"),
   resetExportButton: document.querySelector("#resetExportButton"),
@@ -97,11 +107,20 @@ const elements = {
   pageStatus: document.querySelector("#pageStatus"),
   quitAppButton: document.querySelector("#quitAppButton"),
   quitAppHelp: document.querySelector("#quitAppHelp"),
+  quitDialog: document.querySelector("#quitDialog"),
+  quitDialogCancel: document.querySelector("#quitDialogCancel"),
+  quitDialogSafe: document.querySelector("#quitDialogSafe"),
+  quitDialogImmediate: document.querySelector("#quitDialogImmediate"),
 };
 
 let modelWorkers = [];
 let items = [];
 let running = false;
+let pauseRequested = false;
+let batchPaused = false;
+let batchPromise = null;
+let runState = "idle";
+let batchOperation = null;
 let activeIndex = 0;
 let pageRenderToken = 0;
 let importedManifest = null;
@@ -148,7 +167,11 @@ elements.workerCountInput.addEventListener("change", updateWorkerCountUI);
 elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
-elements.runAllButton.addEventListener("click", runAll);
+elements.runAllButton.addEventListener("click", () => void startBatch());
+elements.pauseResumeButton.addEventListener("click", () => {
+  if (running) requestPause();
+  else if (batchPaused) void startBatch();
+});
 elements.exportAllButton.addEventListener("click", exportAll);
 elements.changeExportButton.addEventListener("click", chooseCustomExportFolder);
 elements.resetExportButton.addEventListener("click", useSourceExportFolder);
@@ -160,6 +183,7 @@ elements.runManifestInput.addEventListener("change", importPreviousRun);
 elements.previousPageButton.addEventListener("click", () => changeCarousel(-1));
 elements.nextPageButton.addEventListener("click", () => changeCarousel(1));
 elements.quitAppButton.addEventListener("click", quitBadgeBlur);
+window.__badgeBlurPrepareToQuit = prepareForQuit;
 if (typeof window.showDirectoryPicker !== "function") {
   elements.exportCompatibility.hidden = false;
 }
@@ -216,14 +240,7 @@ async function verifyLocalServer() {
 
 async function quitBadgeBlur() {
   if (!serverReady || !lifecycleToken) return;
-  if (
-    running &&
-    !window.confirm(
-      "A batch is still running. Quit Badge Blur and stop processing now?",
-    )
-  ) {
-    return;
-  }
+  if (!(await prepareForQuit())) return;
 
   const token = lifecycleToken;
   elements.quitAppButton.disabled = true;
@@ -265,6 +282,63 @@ async function quitBadgeBlur() {
   }
 }
 
+async function prepareForQuit() {
+  if (!running) {
+    if (batchPaused) {
+      await exportQueue.catch(() => undefined);
+      await writeRunMetadata("paused");
+    }
+    return true;
+  }
+
+  const choice = await chooseRunningQuitMode();
+  if (choice === "cancel") return false;
+  if (choice === "immediate") return true;
+
+  requestPause();
+  await batchPromise;
+  await exportQueue.catch(() => undefined);
+  await writeRunMetadata(batchPaused ? "paused" : runState);
+  return true;
+}
+
+function chooseRunningQuitMode() {
+  if (!elements.quitDialog?.showModal) {
+    return Promise.resolve(
+      window.confirm(
+        "Pause safely before quitting? Active images will finish and save first.",
+      )
+        ? "safe"
+        : "cancel",
+    );
+  }
+
+  return new Promise((resolveChoice) => {
+    const finish = (choice) => {
+      elements.quitDialog.close();
+      elements.quitDialogCancel.removeEventListener("click", cancel);
+      elements.quitDialogSafe.removeEventListener("click", safe);
+      elements.quitDialogImmediate.removeEventListener("click", immediate);
+      elements.quitDialog.removeEventListener("cancel", dismiss);
+      resolveChoice(choice);
+    };
+    const cancel = () => finish("cancel");
+    const safe = () => finish("safe");
+    const immediate = () => finish("immediate");
+    const dismiss = (event) => {
+      event.preventDefault();
+      finish("cancel");
+    };
+    elements.quitDialogCancel.addEventListener("click", cancel, { once: true });
+    elements.quitDialogSafe.addEventListener("click", safe, { once: true });
+    elements.quitDialogImmediate.addEventListener("click", immediate, {
+      once: true,
+    });
+    elements.quitDialog.addEventListener("cancel", dismiss, { once: true });
+    elements.quitDialog.showModal();
+  });
+}
+
 async function chooseSourceFolder() {
   if (!serverReady || running) return;
   if (typeof window.showDirectoryPicker !== "function") {
@@ -279,7 +353,9 @@ async function chooseSourceFolder() {
     const selected = await collectDirectoryImages(handle);
     sourceDirectoryHandle = handle;
     customExportDirectoryHandle = null;
-    activeRun = null;
+    if (!isBatchCheckpoint(importedManifest) || !activeRun) {
+      activeRun = null;
+    }
     elements.sourceFolderLabel.textContent =
       `${handle.name} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
     updateExportDestination();
@@ -314,7 +390,9 @@ async function collectDirectoryImages(directory, prefix = "") {
 async function loadSelectedFiles(event) {
   sourceDirectoryHandle = null;
   customExportDirectoryHandle = null;
-  activeRun = null;
+  if (!isBatchCheckpoint(importedManifest) || !activeRun) {
+    activeRun = null;
+  }
   const selected = [...event.target.files]
     .filter((file) => SUPPORTED_EXTENSIONS.has(fileExtension(file.name)))
     .map((file) => ({
@@ -359,6 +437,9 @@ async function setSelectedFiles(selected) {
     message: "Waiting for detection",
   }));
   activeIndex = 0;
+  pauseRequested = false;
+  batchPaused = false;
+  runState = activeRun ? "paused" : "idle";
   lastBatchDurationMs = null;
   lastBatchWorkerCount = null;
   updateBatchTime();
@@ -374,15 +455,22 @@ async function importPreviousRun(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
-    const manifest = JSON.parse(await file.text());
-    if (!manifest || !Array.isArray(manifest.files)) {
+    const document = JSON.parse(await file.text());
+    if (!document || !Array.isArray(document.files)) {
       throw new Error("This is not a Badge Blur run manifest.");
     }
-    importedManifest = manifest;
-    restoreRunSettings(manifest);
+    if (isBatchCheckpoint(document)) {
+      await attachCheckpointRunDirectory(document);
+    } else {
+      activeRun = null;
+    }
+    importedManifest = document;
+    restoreRunSettings(document);
     if (items.length === 0) {
       showProgress(
-        "Previous run loaded. Now choose the original source-image folder.",
+        isBatchCheckpoint(document)
+          ? "Checkpoint and run folder loaded. Now choose the original source-image folder."
+          : "Previous run loaded. Now choose the original source-image folder.",
         100,
       );
       return;
@@ -393,6 +481,52 @@ async function importPreviousRun(event) {
     importedManifest = null;
     showProgress(`Could not import the previous run: ${error.message}`, 0);
   }
+}
+
+async function attachCheckpointRunDirectory(checkpoint) {
+  if (typeof window.showDirectoryPicker !== "function") {
+    throw new Error(
+      "Checkpoint recovery requires the Badge Blur Electron folder picker.",
+    );
+  }
+  const directory = await window.showDirectoryPicker({
+    id: "badge-blur-resume-run",
+    mode: "readwrite",
+  });
+  if (directory.name !== checkpoint.runFolderName) {
+    throw new Error(
+      `Choose the original run folder named ${checkpoint.runFolderName}.`,
+    );
+  }
+  let selectedCheckpoint;
+  try {
+    const checkpointHandle = await directory.getFileHandle(
+      "badge-blur-checkpoint.json",
+    );
+    selectedCheckpoint = JSON.parse(
+      await (await checkpointHandle.getFile()).text(),
+    );
+  } catch {
+    throw new Error(
+      "That folder does not contain a readable badge-blur-checkpoint.json.",
+    );
+  }
+  if (
+    !isBatchCheckpoint(selectedCheckpoint) ||
+    selectedCheckpoint.runId !== checkpoint.runId
+  ) {
+    throw new Error(
+      "That folder belongs to a different Badge Blur run. Choose the exact run folder that contains the imported checkpoint.",
+    );
+  }
+  activeRun = {
+    directory,
+    runId: checkpoint.runId,
+    runFolderName: checkpoint.runFolderName,
+    parentLabel: "Resumed existing run",
+    generatedAt: checkpoint.generatedAt || new Date().toISOString(),
+  };
+  updateExportDestination();
 }
 
 function restoreRunSettings(manifest) {
@@ -427,33 +561,81 @@ function restoreRunSettings(manifest) {
 
 async function restoreImportedRun() {
   if (!importedManifest || items.length === 0) return;
+  const checkpoint = isBatchCheckpoint(importedManifest);
   const runFileIndex = indexRunFiles(importedManifest.files);
   let restored = 0;
   let mismatched = 0;
+  let completed = 0;
+  let pending = 0;
   for (const item of items) {
     const entry = findRunEntry(runFileIndex, sourceRelativePath(item));
     if (!entry) continue;
-    if (entry.byteSize != null && Number(entry.byteSize) !== item.file.size) {
+    const sizeChanged =
+      entry.byteSize != null && Number(entry.byteSize) !== item.file.size;
+    const modifiedChanged =
+      checkpoint &&
+      entry.lastModifiedMilliseconds != null &&
+      Number(entry.lastModifiedMilliseconds) !== item.file.lastModified;
+    if (sizeChanged || modifiedChanged) {
       item.status = "error";
-      item.message = "Previous-run match skipped: source file size changed";
+      item.message = "Previous-run match skipped: source file changed";
       mismatched += 1;
       continue;
     }
     item.boxes = (entry.reviewedMasks || []).map(deserializeMask);
     item.modelBoxes = (entry.initialModelMasks || []).map(deserializeMask);
     item.selectedBoxId = null;
-    item.status = "detected";
-    item.message = `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} restored`;
-    item.editRevision += 1;
-    item.exportStatus = "Restored · awaiting export";
+    item.imageInfo = entry.imageInfo || null;
+    item.editRevision = Math.max(0, Number(entry.editRevision) || 0);
+    if (checkpoint) {
+      const recoveryStatus = recoveryStatusForEntry(entry);
+      if (recoveryStatus === "completed") {
+        item.status = "detected";
+        item.exportRevision = item.editRevision;
+        item.exportedAt = entry.exportedAt || null;
+        item.message =
+          `${item.boxes.length} saved mask${item.boxes.length === 1 ? "" : "s"} recovered`;
+        item.exportStatus = "Recovered · already saved";
+        completed += 1;
+      } else if (recoveryStatus === "export-pending") {
+        item.status = "detected";
+        item.exportRevision = -1;
+        item.message =
+          `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} recovered`;
+        item.exportStatus = "Recovered · export pending";
+        pending += 1;
+      } else {
+        item.status = "queued";
+        item.exportRevision = -1;
+        item.message =
+          entry.checkpointStatus === "active"
+            ? "Interrupted during processing · ready to retry"
+            : "Waiting to resume";
+        item.exportStatus = "Checkpoint restored · detection pending";
+        pending += 1;
+      }
+    } else {
+      item.status = "detected";
+      item.message = `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} restored`;
+      item.editRevision += 1;
+      item.exportStatus = "Restored · awaiting export";
+    }
     restored += 1;
+  }
+  if (checkpoint) {
+    batchPaused = pending > 0;
+    pauseRequested = false;
+    runState = batchPaused ? "paused" : "completed";
   }
   activeIndex = 0;
   await renderCarousel();
   updateSummary();
   updateButtons();
   showProgress(
-    `Restored ${restored} of ${importedManifest.files.length} previous-run file(s)` +
+    checkpoint
+      ? `Recovered ${completed} saved · ${pending} pending` +
+          (mismatched ? ` · ${mismatched} changed source file(s) skipped` : "")
+      : `Restored ${restored} of ${importedManifest.files.length} previous-run file(s)` +
       (mismatched ? ` · ${mismatched} changed source file(s) skipped` : ""),
     restored ? 100 : 0,
   );
@@ -627,27 +809,81 @@ async function ensureModelWorkers(requestedCount) {
   return activeCount;
 }
 
+async function startBatch() {
+  if (batchPromise || running) return batchPromise;
+  batchPromise = runAll()
+    .catch((error) => {
+      console.error("Batch processing failed.", error);
+      running = false;
+      batchOperation = null;
+      pauseRequested = false;
+      stopBatchTimer();
+      showProgress(`Batch stopped: ${error.message}`, 0);
+      updateButtons();
+    })
+    .finally(() => {
+      batchPromise = null;
+    });
+  return batchPromise;
+}
+
+function requestPause() {
+  if (!running || pauseRequested) return;
+  pauseRequested = true;
+  showProgress(
+    "Pausing safely · active images will finish and save before the batch pauses…",
+    batchProgressPercent(),
+  );
+  updateButtons();
+}
+
 async function runAll() {
   if (!modelWorkers.length || running || items.length === 0) return;
+  const pendingIndices = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => shouldProcessItem(item))
+    .map(({ index }) => index);
+  if (pendingIndices.length === 0) {
+    batchPaused = false;
+    runState = "completed";
+    showProgress("Every image in this run is already saved.", 100);
+    updateButtons();
+    return;
+  }
+
   running = true;
+  batchOperation = "batch";
+  pauseRequested = false;
+  batchPaused = false;
+  runState = "running";
   lastBatchWorkerCount = null;
   batchStartedAt = performance.now();
   startBatchTimer();
   updateButtons();
   elements.progressWrap.hidden = false;
-  await ensureExportRun({ allowPrompt: true });
+  const run = await ensureExportRun({ allowPrompt: true });
+  if (!run) {
+    running = false;
+    batchOperation = null;
+    runState = "idle";
+    stopBatchTimer();
+    updateButtons();
+    return;
+  }
+  await writeRunMetadata("running");
   const requestedCount = resolveConfiguredWorkerCount();
   const workerCount = await ensureModelWorkers(requestedCount);
   lastBatchWorkerCount = workerCount;
   updateBatchTime();
   const activeIndices = new Set();
   const pendingExports = [];
-  let completed = 0;
+  let completed = items.length - pendingIndices.length;
 
   await runWorkerPool(
     modelWorkers.slice(0, workerCount),
-    items.length,
-    async (models, index, workerIndex) => {
+    pendingIndices.length,
+    async (models, pendingIndex, workerIndex) => {
+      const index = pendingIndices[pendingIndex];
       const item = items[index];
       const itemStartedAt = performance.now();
       item.processing = true;
@@ -658,14 +894,16 @@ async function runAll() {
       showBatchWorkerProgress(completed, activeIndices.size, workerCount);
 
       try {
-        const detectionStartedAt = performance.now();
-        await detectItem(item, models);
-        const detectionMs = performance.now() - detectionStartedAt;
-        item.timing = {
-          detectionMs,
-          exportMs: 0,
-          totalMs: detectionMs,
-        };
+        if (item.status !== "detected") {
+          const detectionStartedAt = performance.now();
+          await detectItem(item, models);
+          const detectionMs = performance.now() - detectionStartedAt;
+          item.timing = {
+            detectionMs,
+            exportMs: 0,
+            totalMs: detectionMs,
+          };
+        }
         if (item.status === "detected") {
           const exportPromise = queueItemExport(item, {
             updatePreview: isItemVisible(item),
@@ -678,7 +916,17 @@ async function runAll() {
           pendingExports.push(exportPromise);
         } else {
           item.exportStatus = "Not exported because detection failed";
-          completed += 1;
+          const checkpointPromise = queueCheckpointWrite("running").finally(
+            () => {
+              completed += 1;
+              showBatchWorkerProgress(
+                completed,
+                activeIndices.size,
+                workerCount,
+              );
+            },
+          );
+          pendingExports.push(checkpointPromise);
         }
         renderItemStatus(item);
       } finally {
@@ -690,17 +938,44 @@ async function runAll() {
         if (!isItemVisible(item)) releasePreview(item);
       }
     },
+    { shouldContinue: () => !pauseRequested },
   );
   await Promise.all(pendingExports);
+  await exportQueue.catch(() => undefined);
 
   lastBatchDurationMs = performance.now() - batchStartedAt;
   stopBatchTimer();
-  await writeRunMetadata();
+  const remaining = items.filter((item) => shouldProcessItem(item)).length;
+  if (pauseRequested && remaining > 0) {
+    running = false;
+    batchOperation = null;
+    pauseRequested = false;
+    batchPaused = true;
+    runState = "paused";
+    await writeRunMetadata("paused");
+    showProgress(
+      `Paused safely · ${finishedItemCount()} of ${items.length} saved or finished · ${remaining} remaining`,
+      batchProgressPercent(),
+    );
+    await renderCarousel();
+    updateButtons();
+    updateSummary();
+    return;
+  }
+
+  runState = "completed";
+  await writeRunMetadata("completed");
   showProgress(
-    `Batch finished with ${workerCount} worker${workerCount === 1 ? "" : "s"} in ${formatDuration(lastBatchDurationMs)}. Review the centered images; edits auto-save.`,
+    `Batch finished with ${workerCount} worker${workerCount === 1 ? "" : "s"} in ${formatDuration(lastBatchDurationMs)}.` +
+      (remaining
+        ? ` ${remaining} failed or unsaved image${remaining === 1 ? "" : "s"} can be retried.`
+        : " Review the centered images; edits auto-save."),
     100,
   );
   running = false;
+  batchOperation = null;
+  pauseRequested = false;
+  batchPaused = false;
   await renderCarousel();
   updateButtons();
   updateSummary();
@@ -1845,6 +2120,13 @@ function queueItemExport(item, options = {}) {
   return exportQueue;
 }
 
+function queueCheckpointWrite(state = runState) {
+  exportQueue = exportQueue
+    .catch(() => undefined)
+    .then(() => writeRunMetadata(state));
+  return exportQueue;
+}
+
 async function exportItemToRun(item, { updatePreview = false } = {}) {
   if (item.decodeError) return;
   const startedAt = performance.now();
@@ -1867,7 +2149,7 @@ async function exportItemToRun(item, { updatePreview = false } = {}) {
       item.exportedAt = new Date().toISOString();
       item.exportError = null;
       item.exportStatus = `Saved automatically · ${activeRun.runFolderName}`;
-      await writeRunMetadata();
+      await writeRunMetadata(runState);
     } else {
       item.exportStatus =
         "After preview ready · choose an export destination to auto-save";
@@ -1933,6 +2215,8 @@ async function exportAll() {
     return;
   }
   running = true;
+  batchOperation = "reexport";
+  runState = "running";
   const startedAt = performance.now();
   batchStartedAt = startedAt;
   startBatchTimer();
@@ -1951,8 +2235,10 @@ async function exportAll() {
   }
   lastBatchDurationMs = performance.now() - startedAt;
   stopBatchTimer();
-  await writeRunMetadata();
+  runState = "completed";
+  await writeRunMetadata("completed");
   running = false;
+  batchOperation = null;
   await renderCarousel();
   updateButtons();
   showProgress(
@@ -1961,10 +2247,11 @@ async function exportAll() {
   );
 }
 
-async function writeRunMetadata() {
+async function writeRunMetadata(checkpointState = runState) {
   if (!activeRun) return;
   const manifest = buildRunManifest();
   const trainingAnnotations = buildTrainingAnnotations(manifest);
+  const checkpoint = buildRunCheckpoint(manifest, checkpointState);
   await writeFile(
     activeRun.directory,
     "badge-removal-manifest.json",
@@ -1977,6 +2264,56 @@ async function writeRunMetadata() {
       type: "application/json",
     }),
   );
+  await writeFile(
+    activeRun.directory,
+    "badge-blur-checkpoint.json",
+    new Blob([JSON.stringify(checkpoint, null, 2)], {
+      type: "application/json",
+    }),
+  );
+}
+
+function buildRunCheckpoint(manifest, checkpointState) {
+  const files = items.map((item) => checkpointEntry(item));
+  return {
+    ...manifest,
+    documentType: CHECKPOINT_DOCUMENT_TYPE,
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    manifestSchemaVersion: manifest.schemaVersion,
+    batchState: checkpointState,
+    updatedAt: new Date().toISOString(),
+    summary: summarizeCheckpointFiles(files),
+    files,
+  };
+}
+
+function checkpointEntry(item) {
+  const finalMasks = item.boxes.map(serializeBox);
+  const initialModelMasks = item.modelBoxes.map(serializeBox);
+  const output = item.imageInfo ? outputRelativePath(item) : null;
+  return {
+    input: item.file.name,
+    sourcePath: sourceRelativePath(item),
+    byteSize: item.file.size,
+    lastModified: new Date(item.file.lastModified).toISOString(),
+    lastModifiedMilliseconds: item.file.lastModified,
+    checkpointStatus: checkpointStatusForItem(item),
+    status: item.status,
+    message: item.message,
+    output,
+    metadataArchive: output ? `${output}.metadata.mie` : null,
+    imageInfo: item.imageInfo,
+    exportedAt: item.exportedAt || null,
+    editRevision: item.editRevision,
+    exportRevision: item.exportRevision,
+    exportError: item.exportError || null,
+    processingTimeMs: item.timing?.totalMs || null,
+    detectionTimeMs: item.timing?.detectionMs || null,
+    exportTimeMs: item.timing?.exportMs || null,
+    workerNumber: item.workerNumber,
+    initialModelMasks,
+    reviewedMasks: finalMasks,
+  };
 }
 
 function buildRunManifest() {
@@ -2368,18 +2705,40 @@ function updateSummary() {
 function updateButtons() {
   const hasProcessableItems = items.some((item) => !item.decodeError);
   const hasDetectedItems = items.some((item) => item.status === "detected");
+  const hasPendingItems = items.some((item) => shouldProcessItem(item));
+  const batchLocked = running || batchPaused;
   elements.runAllButton.disabled =
-    !serverReady || !modelWorkers.length || !hasProcessableItems || running;
+    !serverReady ||
+    !modelWorkers.length ||
+    !hasProcessableItems ||
+    !hasPendingItems ||
+    batchLocked;
+  elements.runAllButton.textContent = items.some(
+    (item) => checkpointStatusForItem(item) === "failed",
+  )
+    ? "Retry unfinished"
+    : "Start batch";
+  elements.pauseResumeButton.hidden =
+    (running && batchOperation !== "batch") || (!running && !batchPaused);
+  elements.pauseResumeButton.disabled =
+    !serverReady || (running && pauseRequested);
+  elements.pauseResumeButton.textContent = running
+    ? pauseRequested
+      ? "Pausing safely…"
+      : "Pause after active images"
+    : "Resume batch";
   elements.exportAllButton.disabled =
-    !serverReady || !hasDetectedItems || running;
+    !serverReady || !hasDetectedItems || batchLocked;
   elements.loadModelButton.disabled =
-    !serverReady || Boolean(modelWorkers.length) || running;
-  elements.chooseSourceButton.disabled = !serverReady || running;
-  elements.folderInput.disabled = !serverReady || running;
+    !serverReady || Boolean(modelWorkers.length) || batchLocked;
+  elements.chooseSourceButton.disabled = !serverReady || batchLocked;
+  elements.folderInput.disabled = !serverReady || batchLocked;
   elements.changeExportButton.disabled =
-    !serverReady || running || typeof window.showDirectoryPicker !== "function";
-  elements.resetExportButton.disabled = !serverReady || running;
-  elements.importRunButton.disabled = !serverReady || running;
+    !serverReady ||
+    batchLocked ||
+    typeof window.showDirectoryPicker !== "function";
+  elements.resetExportButton.disabled = !serverReady || batchLocked;
+  elements.importRunButton.disabled = !serverReady || batchLocked;
   elements.quitAppButton.disabled = !serverReady || !lifecycleToken;
   for (const control of [
     elements.labelsInput,
@@ -2391,7 +2750,7 @@ function updateButtons() {
     elements.featherInput,
     elements.workerCountInput,
   ]) {
-    control.disabled = running;
+    control.disabled = batchLocked;
   }
   updateCarouselControls();
 }
@@ -2469,6 +2828,17 @@ function showBatchWorkerProgress(completed, active, workerCount) {
     `${completed} of ${items.length} finished · ${active} active · ${workerCount} worker${workerCount === 1 ? "" : "s"}`,
     percent,
   );
+}
+
+function finishedItemCount() {
+  return items.filter((item) => {
+    const status = checkpointStatusForItem(item);
+    return status === "completed" || status === "failed";
+  }).length;
+}
+
+function batchProgressPercent() {
+  return items.length ? (finishedItemCount() / items.length) * 100 : 0;
 }
 
 function showProgress(text, percent) {

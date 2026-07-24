@@ -1,3 +1,4 @@
+const fs = require("node:fs");
 const path = require("node:path");
 const {
   app,
@@ -16,6 +17,17 @@ const APP_ID = "gov.ornl.badge-blur";
 const SERVER_READY_TIMEOUT_MS = 20_000;
 const SERVER_STOP_TIMEOUT_MS = 4_000;
 const smokeTest = process.env.BADGE_BLUR_SMOKE_TEST === "1";
+const smokeUserDataPath = smokeTest
+  ? path.join(app.getPath("temp"), `badge-blur-smoke-${process.pid}`)
+  : null;
+
+if (smokeUserDataPath) {
+  fs.mkdirSync(smokeUserDataPath, { recursive: true });
+  app.setPath("userData", smokeUserDataPath);
+  app.once("quit", () => {
+    fs.rmSync(smokeUserDataPath, { recursive: true, force: true });
+  });
+}
 
 let mainWindow = null;
 let serverProcess = null;
@@ -25,6 +37,7 @@ let resolveServerExit = null;
 let quitting = false;
 let allowWindowClose = false;
 let requestedExitCode = 0;
+let preparingRendererQuit = false;
 
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
@@ -66,7 +79,7 @@ app.on("activate", () => {
 app.on("before-quit", (event) => {
   if (allowWindowClose) return;
   event.preventDefault();
-  void beginQuit();
+  void requestQuitFromRenderer();
 });
 
 app.on("window-all-closed", () => {
@@ -198,7 +211,7 @@ function createMainWindow(url) {
   mainWindow.on("close", (event) => {
     if (allowWindowClose) return;
     event.preventDefault();
-    void beginQuit();
+    void requestQuitFromRenderer();
   });
   mainWindow.once("ready-to-show", () => {
     if (!smokeTest) mainWindow.show();
@@ -252,6 +265,34 @@ async function beginQuit({ serverAlreadyStopped = false } = {}) {
     mainWindow.destroy();
   }
   app.exit(requestedExitCode);
+}
+
+async function requestQuitFromRenderer() {
+  if (preparingRendererQuit || quitting) return;
+  if (
+    smokeTest ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    mainWindow.webContents.isLoading()
+  ) {
+    await beginQuit();
+    return;
+  }
+
+  preparingRendererQuit = true;
+  try {
+    const approved = await mainWindow.webContents.executeJavaScript(
+      "window.__badgeBlurPrepareToQuit?.() ?? true",
+    );
+    if (approved) {
+      await beginQuit();
+    }
+  } catch (error) {
+    console.warn(`Could not prepare the renderer to quit: ${error.message}`);
+    await beginQuit();
+  } finally {
+    preparingRendererQuit = false;
+  }
 }
 
 async function stopLocalServer() {
