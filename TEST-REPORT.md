@@ -1,9 +1,9 @@
 # MVP demo test report
 
-Date: 2026-07-23  
-Release: `0.15.0`
-Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX  
-Model revision: `ff690b0a8050566c290287545bd059350f3e9096`  
+Date: 2026-07-24
+Release: `0.16.0`
+Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
+Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
 `70bf2d3310d1ae73769c96a71e00cbf2861eb33a1f4d97d84a108a7bf02c03c9`
 Classifier: `Xenova/clip-vit-base-patch32` quantized ONNX  

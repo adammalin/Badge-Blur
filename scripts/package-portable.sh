@@ -11,10 +11,14 @@ PACKAGE_NAME="Badge Blur"
 ZIP_NAME="Badge-Blur-Mac-arm64-v${VERSION}.zip"
 ZIP_PATH="$RELEASE_DIR/$ZIP_NAME"
 CHECKSUM_PATH="$ZIP_PATH.sha256"
+DMG_NAME="Badge-Blur-Mac-arm64-v${VERSION}.dmg"
+DMG_PATH="$RELEASE_DIR/$DMG_NAME"
+DMG_CHECKSUM_PATH="$DMG_PATH.sha256"
 STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/badge-blur-package.XXXXXX")"
 PACKAGE_ROOT="$STAGING_ROOT/$PACKAGE_NAME"
 APP_ROOT="$PACKAGE_ROOT/Badge Blur.app"
 APP_RESOURCES="$APP_ROOT/Contents/Resources"
+DMG_ROOT="$STAGING_ROOT/dmg"
 
 cleanup() {
   if [[ "$STAGING_ROOT" == *"/badge-blur-package."* && -d "$STAGING_ROOT" ]]; then
@@ -90,19 +94,38 @@ fi
 /usr/bin/codesign --verify --deep --strict \
   "$PACKAGE_ROOT/Badge Blur.app"
 
-if [[ -e "$ZIP_PATH" || -e "$CHECKSUM_PATH" ]]; then
+if [[
+  -e "$ZIP_PATH" ||
+  -e "$CHECKSUM_PATH" ||
+  -e "$DMG_PATH" ||
+  -e "$DMG_CHECKSUM_PATH"
+]]; then
   echo "Release already exists. Move it aside or increment the version:" >&2
-  echo "$ZIP_PATH" >&2
+  echo "$ZIP_PATH or $DMG_PATH" >&2
   exit 1
 fi
+
+/bin/mkdir -p "$DMG_ROOT"
+/usr/bin/ditto "$PACKAGE_ROOT/Badge Blur.app" "$DMG_ROOT/Badge Blur.app"
+/bin/cp "$PROJECT_ROOT/packaging/README.txt" "$DMG_ROOT/README.txt"
+/bin/ln -s /Applications "$DMG_ROOT/Applications"
+/usr/bin/hdiutil create \
+  -quiet \
+  -volname "Badge Blur" \
+  -srcfolder "$DMG_ROOT" \
+  -format UDZO \
+  "$DMG_PATH"
 
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_ROOT" "$ZIP_PATH"
 (
   cd "$RELEASE_DIR"
   /usr/bin/shasum -a 256 "$ZIP_NAME" > "$ZIP_NAME.sha256"
+  /usr/bin/shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256"
 )
 
 echo
 echo "Created:"
 echo "$ZIP_PATH"
 echo "$CHECKSUM_PATH"
+echo "$DMG_PATH"
+echo "$DMG_CHECKSUM_PATH"

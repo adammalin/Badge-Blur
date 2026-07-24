@@ -9,17 +9,19 @@ connection after the ZIP has been downloaded and unpacked.
 
 Start
 -----
-1. Unzip the package. Badge Blur.app contains its complete private runtime;
-   the adjacent demo folder and README can remain where they are.
-2. Double-click "Badge Blur.app".
+1. Open the DMG and drag "Badge Blur.app" onto the Applications shortcut.
+   ZIP users can instead unzip the package and move Badge Blur.app into
+   Applications manually.
+2. Double-click "Badge Blur.app" in Applications.
 3. The app opens in Google Chrome or Microsoft Edge when installed. No
    Terminal window is required.
 
-This test build is not Developer ID signed or Apple notarized. If macOS blocks
-the first launch, right-click "Badge Blur.app", choose Open, then choose
-Open once more. On a managed Mac, follow organizational policy or contact
-support instead of bypassing a block. A fully warning-free tester build must
-be signed and notarized by ORNL or an Apple Developer account.
+This test build is ad-hoc signed but is not Developer ID signed or Apple
+notarized. If macOS blocks the first launch, leave the warning dialog, open
+System Settings > Privacy & Security, scroll to Security, and choose
+Open Anyway. Apple makes that choice available for about one hour after the
+failed launch. Authenticate and confirm Open. On a managed Mac, follow
+organizational policy or contact support instead of bypassing a block.
 
 Use
 ---
@@ -83,6 +85,13 @@ Stop
 ----
 Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
 tab leaves the local app available so it can be reopened quickly.
+
+Remove
+------
+Quit Badge Blur, then move /Applications/Badge Blur.app to the Trash. Badge
+Blur does not install system extensions, background agents, or files elsewhere
+on the Mac. Export folders created beside selected photographs are user output
+and are intentionally not removed with the app.
 
 Test images
 -----------

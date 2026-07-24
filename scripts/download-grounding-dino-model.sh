@@ -35,7 +35,11 @@ if [[ ! -s "${model_destination}" ]]; then
     --output "${model_destination}"
 fi
 
-actual_sha256="$(shasum -a 256 "${model_destination}" | awk '{print $1}')"
+if command -v shasum >/dev/null 2>&1; then
+  actual_sha256="$(shasum -a 256 "${model_destination}" | awk '{print $1}')"
+else
+  actual_sha256="$(sha256sum "${model_destination}" | awk '{print $1}')"
+fi
 if [[ "${actual_sha256}" != "${MODEL_SHA256}" ]]; then
   echo "Model checksum mismatch." >&2
   echo "Expected: ${MODEL_SHA256}" >&2

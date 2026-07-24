@@ -1,6 +1,6 @@
 {
   "name": "local-badge-remover",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "Local-only browser MVP for detecting and redacting identification badges.",
   "type": "module",
@@ -25,6 +25,7 @@
     "test:badge-production": "node scripts/evaluate-badge-set.mjs --torso-guided --global-classifier --skip-redaction",
     "package:mac": "zsh scripts/package-portable.sh",
     "package:windows": "zsh scripts/package-windows.sh",
+    "package:windows:installer": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
     "package:all": "zsh scripts/package-all.sh",
     "package:portable": "zsh scripts/package-portable.sh",
     "preview": "vite preview --host 127.0.0.1"

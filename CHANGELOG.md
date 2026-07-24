@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0 — 2026-07-24
+
+- Adds a conventional macOS DMG containing `Badge Blur.app`, an Applications
+  shortcut, and installation/removal instructions.
+- Adds a Windows NSIS installer definition with per-user installation, a
+  Start Menu entry, an optional Desktop shortcut, Installed Apps registration,
+  and a complete uninstaller.
+- Adds a small native Windows tray launcher with the Badge Blur system icon,
+  hidden local server startup, Open and Quit commands, and single-instance
+  handling instead of a persistent Command Prompt window.
+- Adds native macOS ARM and Windows x64 GitHub Actions jobs that download and
+  verify the pinned local models, build installers, and archive checksums
+  without committing model binaries or releases to source control.
+- Documents the legitimate Gatekeeper `Open Anyway` testing flow and makes
+  clear that unsigned DMG/installer packaging does not bypass operating-system
+  security policy.
+
 ## 0.15.0 — 2026-07-24
 
 - Renames the user-facing product from Badge Remover to **Badge Blur** while

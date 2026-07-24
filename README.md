@@ -161,7 +161,7 @@ The MIE archive preserves the remaining source metadata for audit/recovery.
 The one-time setup step does contact npm and Hugging Face to download public
 software/model files. Image processing after setup is local.
 
-## Portable macOS and Windows ZIPs
+## Installers and portable packages
 
 To create both offline packages from the same production build:
 
@@ -176,20 +176,33 @@ npm run package:mac
 npm run package:windows
 ```
 
-Each ZIP and SHA-256 checksum is written to `releases/`. Both packages contain
-the same built app, model, and five synthetic demo images. The platform bundle
-adds only its matching launcher and official Node runtime:
+The Mac packaging command writes both a traditional drag-to-Applications DMG
+and a portable ZIP, with SHA-256 checksums, to `releases/`. Both packages
+contain the same built app, model, five synthetic demo images, system icon, and
+private Node runtime:
 
 - macOS Apple silicon: `Badge Blur.app`
-- Windows x64: `Start Badge Blur.cmd`
+- Windows x64 portable ZIP: `Start Badge Blur.cmd`
+
+The Windows installer is built natively on Windows with:
+
+```powershell
+npm run package:windows:installer
+```
+
+It installs per user, creates Badge Blur shortcuts with the system icon, runs
+without a persistent Command Prompt, provides an Open/Quit tray menu, and
+registers a normal uninstaller under **Settings > Apps > Installed apps**.
+The GitHub Actions workflow builds the Mac ARM DMG/ZIP and Windows x64 setup
+executable on their matching hosted operating systems.
 
 Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
 The Mac app has an ad-hoc integrity signature, but it is not Developer ID
-signed or Apple notarized. Testers may need to right-click the app and choose
-Open once. A warning-free Mac package requires an Apple Developer certificate
-and notarization. Managed computers may require normal organizational approval
-or software distribution. Production deployment should go through the
-applicable ORNL security and software-management review.
+signed or Apple notarized. After the first blocked launch, testers can use
+**System Settings > Privacy & Security > Open Anyway** on an unmanaged Mac.
+The unsigned Windows installer can similarly trigger SmartScreen. Installer
+format and system icons do not bypass either security system. Managed computers
+may require normal organizational approval or software distribution.
 
 ## MVP limitations
 

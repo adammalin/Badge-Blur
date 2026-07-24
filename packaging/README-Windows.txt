@@ -3,22 +3,30 @@ BADGE BLUR — WINDOWS OFFLINE MVP
 
 Compatibility
 -------------
-This package is for 64-bit Windows 10 and Windows 11 PCs. Use Microsoft Edge
+This installer is for 64-bit Windows 10 and Windows 11 PCs. Use Microsoft Edge
 or Google Chrome. It does not require Ollama, Python, Node.js, an account, or
-an internet connection after the ZIP has been downloaded and unpacked.
+an internet connection after setup.
 
-Start
------
-1. Right-click the ZIP and choose "Extract All". Do not run it inside the ZIP.
-2. Open the extracted "Badge Blur" folder.
-3. Double-click "Start Badge Blur.cmd".
-4. Keep the Command Prompt window open while using the app.
-5. The app opens in Microsoft Edge.
+Install and start
+-----------------
+1. Double-click "Badge-Blur-Windows-x64-Setup-v....exe".
+2. Follow the setup wizard. The default per-user installation does not require
+   an administrator account.
+3. Launch Badge Blur from the Start Menu or optional Desktop shortcut.
+4. Badge Blur opens in Microsoft Edge and remains available from its green
+   notification-area icon. Double-click the icon to reopen the app, or
+   right-click it and choose Quit Badge Blur.
 
 If Windows, Microsoft Defender SmartScreen, or organizational application
-controls block the launcher or runtime, follow organizational policy or
-contact support. Do not bypass a managed security control. This MVP is not
-code-signed.
+controls block the unsigned installer, follow organizational policy or contact
+support. On an unmanaged test PC, Windows may offer More info > Run anyway.
+The installer is not code-signed and does not bypass security controls.
+
+Portable ZIP fallback
+---------------------
+Right-click the portable ZIP, choose Extract All, open the extracted Badge Blur
+folder, and double-click "Start Badge Blur.cmd". Keep that Command Prompt open
+until you finish.
 
 Use
 ---
@@ -80,7 +88,15 @@ Limitations
 
 Stop
 ----
-Press Control-C in the Command Prompt window or close that window.
+Right-click the Badge Blur notification-area icon and choose Quit Badge Blur.
+Portable ZIP users press Control-C in its Command Prompt window.
+
+Remove
+------
+Open Settings > Apps > Installed apps, find Badge Blur, and choose Uninstall.
+The uninstaller removes the app, private runtime, models, and shortcuts.
+Export folders created beside selected photographs are user output and are
+intentionally not removed.
 
 Test images
 -----------
