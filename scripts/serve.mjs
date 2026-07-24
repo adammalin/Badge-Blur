@@ -80,6 +80,9 @@ if (!existsSync(root)) {
         return;
       }
       sendJson(response, { shuttingDown: true });
+      process.parentPort?.postMessage({
+        type: "badge-blur-shutdown-requested",
+      });
       setImmediate(() => requestShutdown("user request"));
       return;
     }
@@ -260,13 +263,13 @@ function requestShutdown(reason) {
 
   if (!activeServer?.listening) {
     removePidFile();
-    process.exitCode = 0;
+    process.exit(0);
     return;
   }
 
   activeServer.close(() => {
     removePidFile();
-    process.exitCode = 0;
+    process.exit(0);
   });
 
   const forcedExit = setTimeout(() => {

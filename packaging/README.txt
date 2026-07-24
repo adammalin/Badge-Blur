@@ -13,7 +13,7 @@ Start
    ZIP users can instead unzip the package and move Badge Blur.app into
    Applications manually.
 2. Double-click "Badge Blur.app" in Applications.
-3. The app opens in Google Chrome or Microsoft Edge when installed. No
+3. The app opens in its own Electron desktop window. No external browser or
    Terminal window is required.
 
 This test build is ad-hoc signed but is not Developer ID signed or Apple
@@ -66,14 +66,14 @@ TIFF because portable HEIC encoding is not included.
 Privacy
 -------
 Images stay on this Mac. The app binds only to 127.0.0.1 (the local computer),
-contains its model and private Node runtime, and has no analytics, accounts, cloud
-API, or remote model access.
+contains its models and Electron runtime, and has no analytics, accounts,
+cloud API, or remote model access.
 
 Limitations
 -----------
 - Human review is required. Automatic detection will miss some badges and can
   mark non-badge objects.
-- Bulk folder export requires Google Chrome or Microsoft Edge.
+- The bundled Electron Chromium runtime provides bulk folder export.
 - RAW, multi-page, and greater-than-8-bit images are rejected rather than
   silently flattened or reduced.
 - HEIC/HEIF input exports as TIFF.
@@ -83,10 +83,9 @@ Limitations
 
 Stop
 ----
-Click "Quit Badge Blur" in the upper-right corner of the app and wait for the
-message that the private local service stopped. Then close the browser tab.
-If the tab was closed first, quit Badge Blur from the Dock or Activity Monitor.
-The launcher watchdog also stops the server if the launcher exits unexpectedly.
+Click "Quit Badge Blur," press Command-Q, or close the application window.
+Electron stops the private local service and releases its port before exiting.
+The service watchdog also stops it if the Electron parent exits unexpectedly.
 
 Remove
 ------

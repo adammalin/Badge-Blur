@@ -1,8 +1,8 @@
-# Badge Blur MVP
+# Badge Blur
 
-A local-only browser tool that detects likely identification badges, lets a
-reviewer correct the masks, and saves redacted copies without changing the
-original images.
+A local-only Electron desktop application that detects likely identification
+badges, lets a reviewer correct the masks, and saves redacted copies without
+changing the original images.
 
 ## Start the app
 
@@ -13,22 +13,14 @@ npm run setup
 npm start
 ```
 
-Open:
-
-```text
-http://127.0.0.1:4173/
-```
-
 `npm run setup` installs the JavaScript dependencies, downloads the pinned
 local models, verifies their SHA-256 checksums, and builds the app. `npm start`
-serves the already-built app only on the local loopback interface.
-
-The app verifies that the browser and local image-processing server are the
-same release before enabling work. Launchers track the local service, reject
-unsafe stale-process cleanup, and start a fresh process after a clean quit.
+opens the Electron desktop window. Electron owns a private image-processing
+service bound to a random `127.0.0.1` port and shuts it down with the app.
 
 Do not use `npm run dev` for normal photo processing. The packaged local
-runtime is the supported MVP path.
+Electron application is the supported path. `npm run start:web` remains
+available only for browser-based development diagnostics.
 
 ## Model download
 
@@ -104,7 +96,7 @@ strength or switch to the optional pixelated mosaic style. Changing a
 redaction setting refreshes and re-saves completed outputs in the active run.
 
 Parallel processing defaults to **Auto**. The app uses logical-processor and
-browser memory signals plus a short local compute benchmark to select one, two,
+runtime memory signals plus a short local compute benchmark to select one, two,
 or four detector workers conservatively. Manual 1/2/4 choices are available
 for controlled testing. Each worker owns a separate Grounding DINO and CLIP
 session; final files and manifests are still written one at a time.
@@ -148,8 +140,9 @@ The MIE archive preserves the remaining source metadata for audit/recovery.
   and local in-memory `blob:` image URLs.
 - The server binds to `127.0.0.1`, not the LAN.
 - There are no analytics, telemetry, accounts, or cloud APIs.
-- Bulk export uses the folder-write API in Microsoft Edge or Google Chrome and
-  writes files sequentially into the source folder's `exports` subfolder
+- The bundled Electron Chromium runtime provides the folder-write API and
+  native folder chooser consistently on both supported operating systems.
+  Files are written sequentially into the source folder's `exports` subfolder
   unless the reviewer chooses another destination.
 - Detection uses the selected bounded worker pool while redaction/export and
   audit-manifest writes remain sequential. Detection can overlap the previous
@@ -188,17 +181,16 @@ test package.
    about one hour after the blocked launch.
 6. Authenticate when prompted. When macOS shows the warning again, click
    **Open**.
-7. Badge Blur should open in Google Chrome or Microsoft Edge at a local
-   `127.0.0.1` address. No Terminal window, account, Ollama installation, or
-   internet connection is required after installation.
+7. Badge Blur should open as a normal desktop window with its own bundled
+   Chromium runtime. No external browser, Terminal window, account, Ollama
+   installation, or internet connection is required after installation.
 8. Download and unzip the synthetic demo set described below. Select its
    `demo-test-images` folder, run a batch, review every mask, and confirm that
    redacted copies and the run manifest are written to a new uniquely named
    export folder. Confirm that the source images are unchanged.
-9. Click **Quit Badge Blur** in the upper-right corner. Wait for the
-   confirmation that the private local service stopped, then close the browser
-   tab. If the tab was closed first, quit Badge Blur from the Dock or Activity
-   Monitor.
+9. Click **Quit Badge Blur** in the upper-right corner, press Command-Q, or
+   close the application window. Confirm that Badge Blur closes and its private
+   local service no longer remains running.
 
 After the first approved launch, macOS saves Badge Blur as an exception and it
 normally opens by double-clicking. Do not disable Gatekeeper globally or use
@@ -240,51 +232,41 @@ and an approved, locally stored validation set for production qualification.
 
 ### Build packages from source
 
-To create both offline packages from the same production build:
-
-```bash
-npm run package:all
-```
-
-Individual packages can also be created:
+Electron installers must be built on their matching operating system. Build
+the Apple-silicon Mac DMG and ZIP on macOS:
 
 ```bash
 npm run package:mac
+```
+
+Build the per-user x64 Windows installer on Windows:
+
+```bash
 npm run package:windows
 ```
 
-The Mac packaging command writes both a traditional drag-to-Applications DMG
-and a portable ZIP, with SHA-256 checksums, to `releases/`. Both packages
-contain the same built app, model, five synthetic demo images, system icon, and
-private Node runtime:
+Both commands write versioned artifacts and SHA-256 checksums to `releases/`.
+The Mac package is a conventional drag-to-Applications DMG plus ZIP. The
+Squirrel.Windows setup installs per user without requiring an administrator,
+creates a Start Menu application, and registers a normal uninstaller under
+**Settings > Apps > Installed apps**. Both contain Electron, the production
+interface, image runtime, local models, and system icon.
 
-- macOS Apple silicon: `Badge Blur.app`
-- Windows x64 portable ZIP: `Start Badge Blur.cmd`
-
-The Windows installer is built natively on Windows with:
-
-```powershell
-npm run package:windows:installer
-```
-
-It installs per user, creates Badge Blur shortcuts with the system icon, runs
-without a persistent Command Prompt, provides an Open/Quit tray menu, and
-registers a normal uninstaller under **Settings > Apps > Installed apps**.
-The GitHub Actions workflow builds the Mac ARM DMG/ZIP and Windows x64 setup
-executable on their matching hosted operating systems.
+The GitHub Actions workflow independently builds the Mac ARM64 DMG/ZIP and
+Windows x64 setup executable on their matching hosted operating systems.
 
 Installer CI is intentionally not run for ordinary branch pushes. It runs only
 when started manually from the **Build installable apps** workflow or when a
 version tag matching `v*` is pushed.
 
-Each launch receives a new shutdown token. The in-app Quit control shuts down
-the local server and releases its port before reporting success. The server
-also watches its launcher and exits if the launcher crashes. A later launch
-removes only a stale process that can be verified as belonging to Badge Blur;
-an already-running healthy app is reopened instead of duplicated. The Windows
-uninstaller verifies shutdown before deleting the installation.
+Each launch receives a new shutdown token. The Electron main process owns the
+private service, and closing the window or quitting the app shuts down that
+service and releases its random port. The service also watches its Electron
+parent and exits if the application crashes. A second launch focuses the
+existing Badge Blur window instead of starting a duplicate process.
 
-Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
+Recipients do not need a separate browser, Ollama, Python, Node.js, npm, or an
+internet connection.
 The Mac app has an ad-hoc integrity signature, but it is not Developer ID
 signed or Apple notarized. After the first blocked launch, testers can use
 **System Settings > Privacy & Security > Open Anyway** on an unmanaged Mac.
@@ -312,7 +294,7 @@ may require normal organizational approval or software distribution.
   high-contrast credentials. Always review the After view at useful zoom.
 - The bundled model is fixed during inference. Reviewed corrections are saved
   as local annotations but do not update the model automatically.
-- The frozen five-image synthetic browser test found all 11 visible badge
+- The frozen five-image synthetic Electron test found all 11 visible badge
   regions with 11 complete boxes and no false boxes. This small synthetic
   result does not predict accuracy on cleared production photographs.
 - The queued design avoids loading every full-resolution image at once, but a

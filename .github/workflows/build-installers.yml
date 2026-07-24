@@ -13,9 +13,9 @@ permissions:
 
 jobs:
   macos-arm64:
-    name: macOS Apple Silicon DMG
+    name: macOS Electron Apple Silicon
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -32,14 +32,21 @@ jobs:
       - name: Download and verify local models
         run: npm run prepare
 
-      - name: Build Mac ZIP and DMG
+      - name: Build Electron Mac ZIP and DMG
         run: npm run package:mac
 
       - name: Test local server lifecycle
         run: npm run test:lifecycle
 
+      - name: Test packaged Electron runtime
+        run: |
+          BADGE_BLUR_SMOKE_TEST=1 \
+            "out/Badge Blur-darwin-arm64/Badge Blur.app/Contents/MacOS/Badge Blur"
+
       - name: Verify Mac artifacts
         run: |
+          codesign --verify --deep --strict \
+            "out/Badge Blur-darwin-arm64/Badge Blur.app"
           cd releases
           shasum -a 256 -c Badge-Blur-Mac-arm64-v*.zip.sha256
           shasum -a 256 -c Badge-Blur-Mac-arm64-v*.dmg.sha256
@@ -56,9 +63,9 @@ jobs:
           compression-level: 0
 
   windows-x64:
-    name: Windows x64 installer
+    name: Windows Electron x64 installer
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -76,19 +83,30 @@ jobs:
         shell: bash
         run: npm run prepare
 
-      - name: Build production interface
-        run: npm run build
-
       - name: Test local server lifecycle
         run: npm run test:lifecycle
 
-      - name: Install NSIS
-        shell: powershell
-        run: choco install nsis --yes --no-progress
+      - name: Build Electron Windows installer
+        run: npm run package:windows:installer
 
-      - name: Build Windows installer
+      - name: Test packaged Electron runtime
         shell: powershell
-        run: ./scripts/build-windows-installer.ps1
+        run: |
+          $env:BADGE_BLUR_SMOKE_TEST = "1"
+          $app = Get-ChildItem `
+            -Path "out/Badge Blur-win32-x64" `
+            -Filter "Badge Blur.exe" |
+            Select-Object -First 1
+          if (-not $app) {
+            throw "Packaged Badge Blur executable was not found."
+          }
+          $process = Start-Process `
+            -FilePath $app.FullName `
+            -PassThru `
+            -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged Electron smoke test failed."
+          }
 
       - name: Verify Windows artifact
         shell: powershell

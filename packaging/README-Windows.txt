@@ -3,30 +3,23 @@ BADGE BLUR — WINDOWS OFFLINE MVP
 
 Compatibility
 -------------
-This installer is for 64-bit Windows 10 and Windows 11 PCs. Use Microsoft Edge
-or Google Chrome. It does not require Ollama, Python, Node.js, an account, or
-an internet connection after setup.
+This installer is for 64-bit Windows 10 and Windows 11 PCs. It includes its own
+Electron Chromium runtime and does not require Edge, Chrome, Ollama, Python,
+Node.js, an account, or an internet connection after setup.
 
 Install and start
 -----------------
 1. Double-click "Badge-Blur-Windows-x64-Setup-v....exe".
-2. Follow the setup wizard. The default per-user installation does not require
-   an administrator account.
-3. Launch Badge Blur from the Start Menu or optional Desktop shortcut.
-4. Badge Blur opens in Microsoft Edge and remains available from its green
-   notification-area icon. Double-click the icon to reopen the app, or
-   right-click it and choose Quit Badge Blur.
+2. The Squirrel.Windows setup installs Badge Blur for the current user without
+   requiring an administrator account.
+3. Launch Badge Blur from the Start Menu.
+4. Badge Blur opens in its own desktop window with its bundled Chromium
+   runtime.
 
 If Windows, Microsoft Defender SmartScreen, or organizational application
 controls block the unsigned installer, follow organizational policy or contact
 support. On an unmanaged test PC, Windows may offer More info > Run anyway.
 The installer is not code-signed and does not bypass security controls.
-
-Portable ZIP fallback
----------------------
-Right-click the portable ZIP, choose Extract All, open the extracted Badge Blur
-folder, and double-click "Start Badge Blur.cmd". Keep that Command Prompt open
-until you finish.
 
 Use
 ---
@@ -71,14 +64,14 @@ TIFF because portable HEIC encoding is not included.
 Privacy
 -------
 Images stay on this PC. The app binds only to 127.0.0.1 (the local computer),
-contains its model and private Node runtime, and has no analytics, accounts, cloud
-API, or remote model access.
+contains its models and Electron runtime, and has no analytics, accounts,
+cloud API, or remote model access.
 
 Limitations
 -----------
 - Human review is required. Automatic detection will miss some badges and can
   mark non-badge objects.
-- Bulk folder export requires Microsoft Edge or Google Chrome.
+- The bundled Electron Chromium runtime provides bulk folder export.
 - RAW, multi-page, and greater-than-8-bit images are rejected rather than
   silently flattened or reduced.
 - HEIC/HEIF input exports as TIFF.
@@ -88,17 +81,15 @@ Limitations
 
 Stop
 ----
-Click "Quit Badge Blur" in the upper-right corner of the app and wait for the
-message that the private local service stopped. You can also right-click the
-Badge Blur notification-area icon and choose Quit Badge Blur.
-Portable ZIP users press Control-C in its Command Prompt window.
+Click "Quit Badge Blur," close the application window, or use the normal
+Windows close command. Electron stops the private local service and releases
+its port before exiting.
 
 Remove
 ------
 Open Settings > Apps > Installed apps, find Badge Blur, and choose Uninstall.
-The uninstaller first verifies that the local service stopped, then removes the
-app, private runtime, models, and shortcuts. It stops with an explanation
-instead of deleting an installation that is still running.
+The per-user uninstaller removes the app, private runtime, models, and Start
+Menu entry.
 Export folders created beside selected photographs are user output and are
 intentionally not removed.
 

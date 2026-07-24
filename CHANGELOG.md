@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0 — 2026-07-24
+
+- Converts Badge Blur into a complete Electron desktop application for macOS
+  and Windows instead of opening the user's default browser.
+- Bundles a controlled Chromium runtime so source-folder selection and
+  automatic bulk export no longer depend on Safari, Brave, Chrome, or Edge
+  feature and policy differences.
+- Keeps the visible renderer sandboxed with Node integration disabled,
+  context isolation enabled, navigation locked to the private local app
+  origin, and external links restricted to HTTPS.
+- Makes the Electron main process own the private loopback image service.
+  Closing the window, using the app's Quit command, or ending the main process
+  stops the image service and releases its random local port.
+- Adds single-instance behavior so a second launch focuses the existing app
+  instead of starting another server.
+- Replaces the hand-built Mac launcher and Windows C#/NSIS release path with
+  Electron Forge DMG, ZIP, and per-user Squirrel.Windows installers.
+- Adds packaged Electron smoke tests that require the bundled folder picker,
+  local-only origin, Electron user agent, and clean service shutdown.
+
 ## 0.17.0 — 2026-07-24
 
 - Adds a visible **Quit Badge Blur** control that performs an authenticated

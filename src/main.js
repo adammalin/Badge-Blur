@@ -34,7 +34,7 @@ import {
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.17.0";
+const APP_VERSION = "0.18.0";
 const IMAGE_API_VERSION = 5;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",

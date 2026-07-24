@@ -1,8 +1,11 @@
 {
-  "name": "local-badge-remover",
-  "version": "0.17.0",
+  "name": "badge-blur",
+  "productName": "Badge Blur",
+  "version": "0.18.0",
   "private": true,
-  "description": "Local-only browser MVP for detecting and redacting identification badges.",
+  "description": "Local-only desktop app for detecting and redacting identification badges.",
+  "author": "UT-Battelle LLC",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "prepare:model": "bash scripts/download-grounding-dino-model.sh && bash scripts/download-clip-classifier.sh",
@@ -10,7 +13,8 @@
     "prepare": "npm run prepare:model && npm run prepare:wasm",
     "dev": "vite --host 127.0.0.1",
     "setup": "npm install && npm run build",
-    "start": "node scripts/serve.mjs",
+    "start": "electron-forge start",
+    "start:web": "node scripts/serve.mjs",
     "prepare:icons": "node scripts/generate-app-icons.mjs",
     "build": "npm run prepare:icons && vite build",
     "benchmark:models": "node scripts/benchmark-models.mjs",
@@ -22,26 +26,35 @@
     "test:classifier-policy": "node scripts/test-classifier-policy.mjs",
     "test:run-storage": "node scripts/test-run-storage.mjs",
     "test:lifecycle": "node scripts/test-server-lifecycle.mjs",
+    "test:electron": "npm run build && cross-env BADGE_BLUR_SMOKE_TEST=1 electron-forge start",
     "test:badge-set": "node scripts/evaluate-badge-set.mjs",
     "test:badge-production": "node scripts/evaluate-badge-set.mjs --torso-guided --global-classifier --skip-redaction",
-    "package:mac": "zsh scripts/package-portable.sh",
-    "package:windows": "zsh scripts/package-windows.sh",
-    "package:windows:installer": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
+    "package:mac": "npm run package:electron:mac",
+    "package:windows": "npm run package:electron:windows",
+    "package:windows:installer": "npm run package:electron:windows",
+    "package:electron:mac": "npm run build && node scripts/package-electron.mjs mac",
+    "package:electron:windows": "npm run build && node scripts/package-electron.mjs windows",
     "package:demo-images": "zsh scripts/package-demo-images.sh",
-    "package:all": "zsh scripts/package-all.sh",
-    "package:portable": "zsh scripts/package-portable.sh",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
+    "electron-squirrel-startup": "1.0.1",
     "exiftool-vendored": "^37.0.0",
     "heic-decode": "^2.1.0",
     "sharp": "0.35.3"
   },
   "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "cross-env": "10.1.0",
+    "electron": "43.2.0",
     "vite": "7.3.6"
   },
   "overrides": {
+    "isbinaryfile": "5.0.7",
     "sharp": "0.35.3"
   },
   "engines": {
