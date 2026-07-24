@@ -28,7 +28,7 @@ const packageRoot = resolve(scriptDirectory, "..");
 const appVersion = JSON.parse(
   readFileSync(resolve(packageRoot, "package.json"), "utf8"),
 ).version;
-const apiVersion = 5;
+const apiVersion = 6;
 const lifecycleToken = randomBytes(32).toString("hex");
 const launcherParentPid = positiveInteger(
   process.env.BADGE_REMOVER_PARENT_PID,
@@ -92,7 +92,10 @@ if (!existsSync(root)) {
         const sourceName = decodeRequestHeader(request.headers["x-badge-source-name"]);
         const source = await readRequestBody(request);
         if (requestPath === "/api/image/decode") {
-          const result = await decodePreview(source, sourceName);
+          const options = JSON.parse(
+            decodeRequestHeader(request.headers["x-badge-options"]) || "{}",
+          );
+          const result = await decodePreview(source, sourceName, options);
           sendBinary(response, result.preview, "image/jpeg", result.info);
           return;
         }

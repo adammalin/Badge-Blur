@@ -4,6 +4,7 @@ const {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   shell,
   utilityProcess,
 } = require("electron");
@@ -41,6 +42,19 @@ let preparingRendererQuit = false;
 
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
+
+ipcMain.handle("badge-blur:open-export-folder", async (_event, checkpointPath) => {
+  if (
+    typeof checkpointPath !== "string" ||
+    !path.isAbsolute(checkpointPath) ||
+    path.basename(checkpointPath) !== "badge-blur-checkpoint.json"
+  ) {
+    throw new Error("Badge Blur could not verify the export folder.");
+  }
+  const error = await shell.openPath(path.dirname(checkpointPath));
+  if (error) throw new Error(error);
+  return true;
+});
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -192,6 +206,7 @@ function createMainWindow(url) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.cjs"),
       sandbox: true,
       webSecurity: true,
       navigateOnDragDrop: false,
@@ -222,11 +237,14 @@ function createMainWindow(url) {
       const capabilities = await mainWindow.webContents.executeJavaScript(`({
         appVersion: document.querySelector("meta[name='badge-blur-version']")?.content || null,
         directoryPicker: typeof window.showDirectoryPicker === "function",
+        openExportFolderBridge:
+          typeof window.badgeBlurDesktop?.openExportFolder === "function",
         localOnly: location.hostname === "127.0.0.1",
         userAgentIncludesElectron: navigator.userAgent.includes("Electron")
       })`);
       const passed =
         capabilities.directoryPicker &&
+        capabilities.openExportFolderBridge &&
         capabilities.localOnly &&
         capabilities.userAgentIncludesElectron;
       console.log(
@@ -246,7 +264,7 @@ function createMainWindow(url) {
 function isAllowedExternalUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:";
+    return url.protocol === "https:" || url.protocol === "mailto:";
   } catch {
     return false;
   }

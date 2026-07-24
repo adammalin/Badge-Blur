@@ -8,10 +8,11 @@
       content="default-src 'self'; img-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; worker-src 'self' blob:;"
     />
     <meta name="referrer" content="no-referrer" />
-    <meta name="badge-blur-version" content="0.19.0" />
+    <meta name="badge-blur-version" content="0.20.0" />
     <title>Badge Blur</title>
     <link rel="icon" type="image/png" href="/badge-blur.png" />
     <link rel="apple-touch-icon" href="/badge-blur.png" />
+    <link rel="stylesheet" href="/src/ornl-design-tokens.css" />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
@@ -33,24 +34,28 @@
         </p>
       </div>
       <div class="header-actions">
-        <div class="privacy-card" aria-label="Privacy status">
-          <span class="privacy-dot"></span>
-          <div>
-            <strong>No image uploads</strong>
-            <span>Inference and export stay on this computer.</span>
-          </div>
-        </div>
+        <button
+          id="themeToggleButton"
+          class="button secondary theme-toggle"
+          type="button"
+          aria-pressed="false"
+          aria-label="Use dark mode"
+          title="Use dark mode"
+        >
+          <span aria-hidden="true">◐</span>
+        </button>
         <button
           id="quitAppButton"
-          class="button secondary quit-app-button"
+          class="button quit-app-button"
           type="button"
+          aria-label="Quit Badge Blur"
+          title="Quit Badge Blur"
           disabled
         >
-          Quit Badge Blur
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M12 3v9m5.7-6.7a8 8 0 1 1-11.4 0" />
+          </svg>
         </button>
-        <small id="quitAppHelp">
-          Closes Badge Blur and stops the private local service.
-        </small>
       </div>
     </header>
 
@@ -61,15 +66,38 @@
             <p class="step">Step 1</p>
             <h2 id="setup-title">Choose images</h2>
           </div>
-          <p id="modelStatus" class="status-chip" data-state="idle">
-            Model not loaded
-          </p>
+        </div>
+
+        <div class="preflight-bar" aria-label="Local preflight checks">
+          <div class="preflight-check" data-state="ready">
+            <span class="status-indicator" aria-hidden="true"></span>
+            <div>
+              <strong>No image uploads</strong>
+              <span>Inference and export stay on this computer.</span>
+            </div>
+          </div>
+          <div id="modelStatus" class="preflight-check" data-state="idle">
+            <span class="status-indicator" aria-hidden="true"></span>
+            <div>
+              <strong>Preparing local models</strong>
+              <span>Checking the private processing engine.</span>
+            </div>
+          </div>
+          <button id="loadModelButton" class="button small secondary" hidden>
+            Retry local models
+          </button>
         </div>
 
         <div class="file-picker source-picker">
-          <button id="chooseSourceButton" type="button">
-            Choose source folder
-          </button>
+          <div class="picker-actions">
+            <button id="chooseSourceButton" type="button">
+              Choose source folder
+            </button>
+            <span aria-hidden="true">or</span>
+            <button id="importRunButton" type="button">
+              Import previous run
+            </button>
+          </div>
           <small id="sourceFolderLabel">
             JPEG, PNG, TIFF, WebP, AVIF, HEIC/HEIF
           </small>
@@ -79,6 +107,13 @@
             accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.avif,.heic,.heif"
             webkitdirectory
             multiple
+            aria-hidden="true"
+            tabindex="-1"
+          />
+          <input
+            id="runManifestInput"
+            type="file"
+            accept=".json,application/json"
             hidden
           />
         </div>
@@ -196,13 +231,11 @@
           </div>
         </details>
 
-        <div class="toolbar">
-          <button id="loadModelButton" class="button secondary">
-            Loading models automatically…
-          </button>
+        <div class="toolbar workflow-toolbar" aria-label="Batch workflow">
           <button id="runAllButton" class="button primary" disabled>
             Start batch
           </button>
+          <span id="pauseWorkflowArrow" class="workflow-arrow" aria-hidden="true">→</span>
           <button
             id="pauseResumeButton"
             class="button secondary"
@@ -211,47 +244,58 @@
           >
             Pause after active images
           </button>
+          <span id="exportWorkflowArrow" class="workflow-arrow" aria-hidden="true">→</span>
           <button id="exportAllButton" class="button success" disabled>
-            Re-export all
+            Export all
           </button>
-          <button id="changeExportButton" class="button secondary" disabled>
-            Choose different export folder
-          </button>
-          <button
-            id="resetExportButton"
-            class="button secondary"
-            hidden
-          >
-            Use source / exports
-          </button>
-          <button id="importRunButton" class="button secondary">
-            Import previous run
-          </button>
-          <input
-            id="runManifestInput"
-            type="file"
-            accept=".json,application/json"
-            hidden
-          />
         </div>
         <div class="run-details" aria-live="polite">
-          <div>
+          <div class="destination-detail">
             <span>Auto-save destination</span>
             <strong id="exportDestination">
               Choose a source folder to use its exports subfolder.
             </strong>
+            <details id="exportLocationOptions" class="destination-options">
+              <summary>Export location options</summary>
+              <div>
+                <button
+                  id="changeExportButton"
+                  class="button small secondary"
+                  disabled
+                >
+                  Choose different folder
+                </button>
+                <button
+                  id="resetExportButton"
+                  class="button small secondary"
+                  hidden
+                >
+                  Use source / exports
+                </button>
+              </div>
+            </details>
           </div>
           <div>
             <span>Batch processing time</span>
             <strong id="batchTime">Not started</strong>
           </div>
+          <div>
+            <span>Export processing time</span>
+            <strong id="exportTime">Not started</strong>
+          </div>
         </div>
-        <aside class="instruction">
-          To resume an interrupted batch, import its
-          <strong>badge-blur-checkpoint.json</strong>, choose that existing run
-          folder, then choose the original source folder. To revise a completed
-          batch into a new run, import its
-          <strong>badge-removal-manifest.json</strong>.
+        <aside class="instruction recovery-instruction">
+          <p>
+            <strong>Resume an interrupted batch:</strong> import its
+            <strong>badge-blur-checkpoint.json</strong>, choose that existing
+            run folder, then choose the original source folder.
+          </p>
+          <p>
+            <strong>Revise a completed batch:</strong> import its
+            <strong>badge-removal-manifest.json</strong>, then choose the
+            original source folder. Reviewed masks and settings are restored
+            locally.
+          </p>
         </aside>
 
         <aside id="exportCompatibility" class="instruction warning" hidden>
@@ -265,6 +309,24 @@
             <div id="progressBar" class="progress-bar"></div>
           </div>
           <p id="progressText" aria-live="polite"></p>
+        </div>
+        <div
+          id="completionBanner"
+          class="completion-banner"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <span class="completion-check" aria-hidden="true">✓</span>
+          <div>
+            <strong>Batch processing complete</strong>
+            <span id="completionText">
+              Review begins with the first image.
+            </span>
+          </div>
+          <button id="openExportFolderButton" class="button success" type="button">
+            Open export folder
+          </button>
         </div>
       </section>
 
@@ -293,11 +355,11 @@
           hidden
         >
           <button id="previousPageButton" class="button small secondary">
-            Previous image
+            ← Previous
           </button>
           <p id="pageStatus">Image 1 of 1</p>
           <button id="nextPageButton" class="button small secondary">
-            Next image
+            Next →
           </button>
         </nav>
 
@@ -305,7 +367,13 @@
           <span class="empty-icon">▧</span>
           <p>Select the synthetic demo folder to begin.</p>
         </div>
-        <div id="reviewGrid" class="review-carousel"></div>
+        <div id="reviewGrid" class="review-stage"></div>
+        <div
+          id="filmstrip"
+          class="filmstrip"
+          aria-label="Image thumbnail filmstrip"
+          hidden
+        ></div>
       </section>
     </main>
 
@@ -329,10 +397,20 @@
     </dialog>
 
     <footer>
-      MVP output is for review, not proof that every badge was found. Embedded
-      metadata is transferred locally and an adjacent MIE metadata archive is
-      saved. RAW, multi-page, and greater-than-8-bit images are intentionally
-      rejected.
+      <p>
+        MVP output is for review, not proof that every badge was found.
+        Embedded metadata is transferred locally and an adjacent MIE metadata
+        archive is saved. RAW, multi-page, and greater-than-8-bit images are
+        intentionally rejected.
+      </p>
+      <p class="footer-contact">
+        Questions or feedback:
+        <strong>Adam Malin</strong> ·
+        <a href="mailto:malinab@ornl.gov">malinab@ornl.gov</a> ·
+        <a href="https://github.com/adammalin/Badge-Blur">
+          Badge Blur on GitHub
+        </a>
+      </p>
     </footer>
 
     <script type="module" src="/src/main.js"></script>

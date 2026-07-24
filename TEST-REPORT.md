@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-24
-Source version: `0.19.0`; latest packaged Electron release: `0.18.0`
+Source version: `0.20.0`; latest packaged Electron release: `0.18.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -152,6 +152,33 @@ shutdown. A visible local UI check confirmed automatic model readiness,
 collapsed Advanced settings defaults, and the new checkpoint recovery
 instructions. A deliberate mid-inference process-kill test with a large
 cleared batch remains a recommended soak-test item before production use.
+
+## Reviewer interface validation
+
+Version 0.20.0 remains source-only. A visible local-browser pass loaded the
+five synthetic images through the exact folder-input fallback and confirmed:
+
+- one large active reviewer replaces the earlier three-card rebuild;
+- all five images appear in a horizontally scrollable thumbnail filmstrip;
+- clicking Next updates both the active image and filmstrip selection;
+- nearby review previews are preloaded while filmstrip thumbnails use a
+  separate lazy 240×156 decode;
+- a real local detection completed with two proposed badges, one corner fit,
+  and separate detection/export timing;
+- the active thumbnail moved from Waiting to Ready for review after detection;
+- the light/dark control changes both the theme state and accessible label;
+- the mask delete control remains circular and centered below a portrait-image
+  corner-fit box after aspect-ratio-preserving canvas layout;
+- refreshing after detection reports the saved local project, and reselecting
+  the same fallback source folder restores the five-image queue and reviewed
+  mask without rerunning detection; and
+- no browser warnings or errors were recorded during selection, navigation,
+  theme switching, thumbnail creation, or detection.
+
+The deterministic thumbnail regression verifies JPEG output at exactly
+240×156 while retaining the original image dimensions in the returned source
+metadata. Electron smoke testing separately verifies that the sandboxed
+open-export-folder bridge is present alongside the native directory picker.
 
 ## Parallel worker validation
 

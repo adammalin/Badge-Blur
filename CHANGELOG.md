@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.20.0 — 2026-07-24
+
+- Replaces the three-card carousel with a large single-image reviewer and a
+  horizontally scrollable, lazy-loaded thumbnail filmstrip. Nearby review
+  previews are preloaded for smoother navigation without decoding the entire
+  batch at review size.
+- Adds persistent filmstrip states for Waiting, Processing, Saving, Done,
+  Ready for review, and Needs attention, separate from the active review
+  outline.
+- Resets completed processing and re-export runs to the first image and shows
+  a green completion banner.
+- Adds **Open export folder** to the completion state in Electron through a
+  sandboxed preload bridge that opens only the folder containing the verified
+  run checkpoint.
+- Keeps batch and export processing time in separate persistent fields and
+  records export duration in the schema-version-10 manifest.
+- Adds a light/dark theme toggle, stronger dark-mode contrast, compact matched
+  theme and power icons, and a top-right reddish power control.
+- Consolidates privacy and local-model checks into lightweight preflight
+  confirmations, moves previous-run import beside source selection, and
+  collapses alternate export-destination controls until needed.
+- Removes the always-visible model-loaded button while preserving an
+  error-only retry action.
+- Separates interrupted-run and completed-run recovery instructions to improve
+  spacing and scanability.
+- Adds Adam Malin's ORNL contact address and the public Badge Blur repository
+  to the footer.
+- Moves each mask's delete control to the center below the mask so all four
+  corner-adjustment handles remain unobstructed.
+- Preserves the review canvas aspect ratio so the centered delete control stays
+  circular instead of stretching with tall or wide images.
+- Adds a local active-project cache that restores queue state, settings,
+  review position, folder handles, and edited masks after a refresh. Browsers
+  that do not retain folder permission ask the reviewer to reselect the same
+  source folder before applying the cached review.
+- Adds deterministic 240×156 lazy-thumbnail generation coverage.
+- Keeps this release source-only for testing; no 0.20.0 installer artifacts
+  were built.
+
 ## 0.19.0 — 2026-07-24
 
 - Adds **Pause after active images** and **Resume batch** controls. Pausing

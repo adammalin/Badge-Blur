@@ -1,0 +1,27 @@
+:root {
+  /* ORNL primary palette */
+  --ornl-green: #00662c;
+  --ornl-hale-navy: #00454d;
+  --ornl-graphite: #dbdcdb;
+  --ornl-polar: #ffffff;
+  --ornl-dark-matter: #373a36;
+
+  /* ORNL secondary palette */
+  --ornl-energy: #7dba00;
+  --ornl-mist: #8bfebf;
+  --ornl-biome: #00b38f;
+  --ornl-aqua: #00bdb5;
+  --ornl-infinity: #006ba6;
+  --ornl-hydro: #005776;
+
+  /* ORNL accent palette: keep combined accents at or below 25% */
+  --ornl-forge: #ff9e1b;
+  --ornl-spark: #fe5000;
+  --ornl-plasma: #b50094;
+  --ornl-pulsar: #4e008e;
+
+  /* Working typography and geometry */
+  --ornl-font-sans: "Mulish", "Aptos", Arial, sans-serif;
+  --ornl-font-office: "Aptos", Arial, sans-serif;
+  --ornl-radius: 0;
+}

@@ -19,18 +19,24 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".heif",
 ]);
 
-export async function decodePreview(sourceBuffer, sourceName) {
+export async function decodePreview(sourceBuffer, sourceName, options = {}) {
   assertSource(sourceBuffer, sourceName);
   const metadata = await inspectSource(sourceBuffer, sourceName);
   const source = await pixelSource(sourceBuffer, metadata);
+  const width = clamp(Math.round(Number(options.width) || 1200), 64, 1600);
+  const height = clamp(Math.round(Number(options.height) || 1200), 64, 1600);
+  const fit = options.fit === "cover" ? "cover" : "inside";
   const preview = await source
     .resize({
-      width: 1200,
-      height: 1200,
-      fit: "inside",
+      width,
+      height,
+      fit,
       withoutEnlargement: true,
     })
-    .jpeg({ quality: 84, mozjpeg: true })
+    .jpeg({
+      quality: clamp(Math.round(Number(options.quality) || 84), 55, 92),
+      mozjpeg: true,
+    })
     .toBuffer();
 
   return { preview, info: metadata };

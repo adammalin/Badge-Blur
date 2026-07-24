@@ -42,9 +42,14 @@ import {
   resolveWorkerCount,
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
+import { maskDeleteControlCenter } from "./mask-controls.js";
+import {
+  loadActiveProjectCache,
+  saveActiveProjectCache,
+} from "./project-cache.js";
 
-const APP_VERSION = "0.19.0";
-const IMAGE_API_VERSION = 5;
+const APP_VERSION = "0.20.0";
+const IMAGE_API_VERSION = 6;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -56,7 +61,9 @@ const SUPPORTED_EXTENSIONS = new Set([
   "heic",
   "heif",
 ]);
-const CAROUSEL_RADIUS = 1;
+const CAROUSEL_RADIUS = 2;
+const PROJECT_CACHE_DOCUMENT_TYPE = "badge-blur-active-project";
+const PROJECT_CACHE_SCHEMA_VERSION = 1;
 
 env.localModelPath = "/models/";
 env.allowRemoteModels = false;
@@ -85,12 +92,16 @@ const elements = {
   workerCountHelp: document.querySelector("#workerCountHelp"),
   loadModelButton: document.querySelector("#loadModelButton"),
   runAllButton: document.querySelector("#runAllButton"),
+  pauseWorkflowArrow: document.querySelector("#pauseWorkflowArrow"),
+  exportWorkflowArrow: document.querySelector("#exportWorkflowArrow"),
   pauseResumeButton: document.querySelector("#pauseResumeButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
   changeExportButton: document.querySelector("#changeExportButton"),
   resetExportButton: document.querySelector("#resetExportButton"),
   exportDestination: document.querySelector("#exportDestination"),
   batchTime: document.querySelector("#batchTime"),
+  exportTime: document.querySelector("#exportTime"),
+  exportLocationOptions: document.querySelector("#exportLocationOptions"),
   importRunButton: document.querySelector("#importRunButton"),
   runManifestInput: document.querySelector("#runManifestInput"),
   modelStatus: document.querySelector("#modelStatus"),
@@ -101,12 +112,16 @@ const elements = {
   summaryText: document.querySelector("#summaryText"),
   emptyState: document.querySelector("#emptyState"),
   reviewGrid: document.querySelector("#reviewGrid"),
+  filmstrip: document.querySelector("#filmstrip"),
   pagination: document.querySelector("#pagination"),
   previousPageButton: document.querySelector("#previousPageButton"),
   nextPageButton: document.querySelector("#nextPageButton"),
   pageStatus: document.querySelector("#pageStatus"),
+  completionBanner: document.querySelector("#completionBanner"),
+  completionText: document.querySelector("#completionText"),
+  openExportFolderButton: document.querySelector("#openExportFolderButton"),
+  themeToggleButton: document.querySelector("#themeToggleButton"),
   quitAppButton: document.querySelector("#quitAppButton"),
-  quitAppHelp: document.querySelector("#quitAppHelp"),
   quitDialog: document.querySelector("#quitDialog"),
   quitDialogCancel: document.querySelector("#quitDialogCancel"),
   quitDialogSafe: document.querySelector("#quitDialogSafe"),
@@ -133,10 +148,18 @@ let batchStartedAt = null;
 let batchTimer = null;
 let lastBatchDurationMs = null;
 let lastBatchWorkerCount = null;
+let exportStartedAt = null;
+let exportTimer = null;
+let lastExportDurationMs = null;
 let computeBenchmarkScore = null;
 let exportQueue = Promise.resolve();
 let carouselRenderQueue = Promise.resolve();
 const itemExportTimers = new Map();
+let thumbnailObserver = null;
+let cachedProject = null;
+let projectCacheLoaded = false;
+let restoringCachedProject = false;
+let projectCacheTimer = null;
 
 elements.thresholdInput.addEventListener("input", () => {
   elements.thresholdOutput.value = Number(elements.thresholdInput.value).toFixed(2);
@@ -164,6 +187,18 @@ elements.redactionStyleInput.addEventListener("change", () => {
   scheduleAllEditedExports();
 });
 elements.workerCountInput.addEventListener("change", updateWorkerCountUI);
+for (const input of [
+  elements.labelsInput,
+  elements.enhancedInput,
+  elements.thresholdInput,
+  elements.paddingInput,
+  elements.redactionStyleInput,
+  elements.strengthInput,
+  elements.featherInput,
+  elements.workerCountInput,
+]) {
+  input.addEventListener("change", scheduleProjectCache);
+}
 elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
@@ -173,6 +208,8 @@ elements.pauseResumeButton.addEventListener("click", () => {
   else if (batchPaused) void startBatch();
 });
 elements.exportAllButton.addEventListener("click", exportAll);
+elements.openExportFolderButton.addEventListener("click", openExportFolder);
+elements.themeToggleButton.addEventListener("click", toggleTheme);
 elements.changeExportButton.addEventListener("click", chooseCustomExportFolder);
 elements.resetExportButton.addEventListener("click", useSourceExportFolder);
 elements.importRunButton.addEventListener("click", () => {
@@ -188,18 +225,73 @@ if (typeof window.showDirectoryPicker !== "function") {
   elements.exportCompatibility.hidden = false;
 }
 document.addEventListener("keydown", (event) => {
+  if (
+    event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLSelectElement ||
+    event.target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+  if (
+    !running &&
+    (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+    items.length > 1
+  ) {
+    event.preventDefault();
+    void changeCarousel(event.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
   if (event.key !== "Delete" && event.key !== "Backspace") return;
-  if (event.target instanceof HTMLInputElement) return;
   const selected = items.find((item) => item.selectedBoxId);
   if (selected) {
     event.preventDefault();
     removeSelectedBox(selected);
   }
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") void persistProjectCache();
+});
+initializeTheme();
 updateButtons();
 updateRedactionStyleUI();
 updateWorkerCountUI();
 void verifyLocalServer();
+
+function initializeTheme() {
+  let storedTheme = null;
+  try {
+    storedTheme = localStorage.getItem("badge-blur-theme");
+  } catch {
+    // Use the operating-system preference when storage is unavailable.
+  }
+  const theme =
+    storedTheme === "light" || storedTheme === "dark"
+      ? storedTheme
+      : window.matchMedia?.("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+  applyTheme(theme);
+}
+
+function toggleTheme() {
+  const nextTheme =
+    document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+  try {
+    localStorage.setItem("badge-blur-theme", nextTheme);
+  } catch {
+    // The selected theme still applies for the current session.
+  }
+}
+
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  elements.themeToggleButton.setAttribute("aria-pressed", String(dark));
+  const label = dark ? "Use light mode" : "Use dark mode";
+  elements.themeToggleButton.setAttribute("aria-label", label);
+  elements.themeToggleButton.title = label;
+}
 
 async function verifyLocalServer() {
   try {
@@ -224,6 +316,7 @@ async function verifyLocalServer() {
     serverReady = true;
     updateButtons();
     await loadModel();
+    await restoreCachedProject();
   } catch (error) {
     console.error("Local server compatibility check failed.", error);
     serverReady = false;
@@ -244,9 +337,8 @@ async function quitBadgeBlur() {
 
   const token = lifecycleToken;
   elements.quitAppButton.disabled = true;
-  elements.quitAppButton.textContent = "Shutting down…";
-  elements.quitAppHelp.textContent =
-    "Stopping the private local service and releasing its port.";
+  elements.quitAppButton.setAttribute("aria-label", "Shutting down Badge Blur");
+  elements.quitAppButton.title = "Shutting down Badge Blur";
 
   try {
     const response = await fetch("/api/shutdown", {
@@ -264,21 +356,20 @@ async function quitBadgeBlur() {
     lifecycleToken = null;
     running = false;
     stopBatchTimer();
+    stopExportTimer();
     updateButtons();
     setModelStatus("idle", "App stopped");
     showProgress(
       "Badge Blur has shut down and released its local server. You can close this browser tab.",
       100,
     );
-    elements.quitAppButton.textContent = "Badge Blur stopped";
-    elements.quitAppHelp.textContent =
-      "The private local service is no longer running.";
+    elements.quitAppButton.setAttribute("aria-label", "Badge Blur stopped");
+    elements.quitAppButton.title = "Badge Blur stopped";
   } catch (error) {
     console.error("Badge Blur shutdown failed.", error);
     elements.quitAppButton.disabled = false;
-    elements.quitAppButton.textContent = "Quit Badge Blur";
-    elements.quitAppHelp.textContent =
-      `Could not stop the local service: ${error.message}`;
+    elements.quitAppButton.setAttribute("aria-label", "Quit Badge Blur");
+    elements.quitAppButton.title = `Quit Badge Blur · ${error.message}`;
   }
 }
 
@@ -353,6 +444,7 @@ async function chooseSourceFolder() {
     const selected = await collectDirectoryImages(handle);
     sourceDirectoryHandle = handle;
     customExportDirectoryHandle = null;
+    await prepareCachedProjectForSource(handle.name);
     if (!isBatchCheckpoint(importedManifest) || !activeRun) {
       activeRun = null;
     }
@@ -400,6 +492,9 @@ async function loadSelectedFiles(event) {
       relativePath: fallbackRelativePath(file),
     }))
     .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  await prepareCachedProjectForSource(
+    sourceRootName(selected[0]?.file) || "Selected folder",
+  );
   elements.sourceFolderLabel.textContent =
     `${sourceRootName(selected[0]?.file) || "Selected folder"} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
   updateExportDestination();
@@ -408,6 +503,8 @@ async function loadSelectedFiles(event) {
 
 async function setSelectedFiles(selected) {
   releaseItems();
+  thumbnailObserver?.disconnect();
+  thumbnailObserver = null;
   for (const timer of itemExportTimers.values()) clearTimeout(timer);
   itemExportTimers.clear();
   items = selected.map(({ file, relativePath }, index) => ({
@@ -421,6 +518,8 @@ async function setSelectedFiles(selected) {
     previewUrl: null,
     previewImage: null,
     previewPromise: null,
+    thumbnailUrl: null,
+    thumbnailPromise: null,
     processing: false,
     workerNumber: null,
     boxes: [],
@@ -442,13 +541,20 @@ async function setSelectedFiles(selected) {
   runState = activeRun ? "paused" : "idle";
   lastBatchDurationMs = null;
   lastBatchWorkerCount = null;
+  lastExportDurationMs = null;
+  exportStartedAt = null;
+  stopExportTimer();
   updateBatchTime();
+  updateExportTime();
+  hideCompletion();
 
   elements.emptyState.hidden = items.length > 0;
+  renderFilmstrip();
   await renderCarousel();
   await restoreImportedRun();
   updateSummary();
   updateButtons();
+  scheduleProjectCache();
 }
 
 async function importPreviousRun(event) {
@@ -628,6 +734,7 @@ async function restoreImportedRun() {
     runState = batchPaused ? "paused" : "completed";
   }
   activeIndex = 0;
+  renderFilmstrip();
   await renderCarousel();
   updateSummary();
   updateButtons();
@@ -639,6 +746,244 @@ async function restoreImportedRun() {
       (mismatched ? ` · ${mismatched} changed source file(s) skipped` : ""),
     restored ? 100 : 0,
   );
+  if (checkpoint && !batchPaused && completed > 0) {
+    showCompletion(
+      "Recovered batch complete",
+      "Every saved image was restored. Review begins with the first image.",
+    );
+  }
+  scheduleProjectCache();
+}
+
+async function restoreCachedProject() {
+  projectCacheLoaded = true;
+  try {
+    cachedProject = await loadActiveProjectCache();
+  } catch (error) {
+    console.warn("Badge Blur could not read its local project cache.", error);
+    return;
+  }
+  if (
+    !cachedProject ||
+    cachedProject.documentType !== PROJECT_CACHE_DOCUMENT_TYPE ||
+    Number(cachedProject.schemaVersion) !== PROJECT_CACHE_SCHEMA_VERSION ||
+    !isBatchCheckpoint(cachedProject.snapshot)
+  ) {
+    cachedProject = null;
+    return;
+  }
+
+  const sourceHandle = cachedProject.sourceDirectoryHandle;
+  if (
+    !sourceHandle ||
+    (await directoryPermission(sourceHandle, "readwrite")) !== "granted"
+  ) {
+    showProgress(
+      `Saved project found from ${formatCacheTime(cachedProject.savedAt)}. ` +
+        "Choose its original source folder to restore the review.",
+      100,
+    );
+    return;
+  }
+
+  restoringCachedProject = true;
+  try {
+    sourceDirectoryHandle = sourceHandle;
+    customExportDirectoryHandle = await usableCachedDirectory(
+      cachedProject.customExportDirectoryHandle,
+    );
+    activeRun = await cachedActiveRun(cachedProject);
+    importedManifest = cachedProject.snapshot;
+    restoreRunSettings(importedManifest);
+    const selected = await collectDirectoryImages(sourceDirectoryHandle);
+    elements.sourceFolderLabel.textContent =
+      `${sourceDirectoryHandle.name} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
+    updateExportDestination();
+    await setSelectedFiles(selected);
+    restoreCachedSessionDetails(cachedProject);
+    showProgress(
+      `Restored ${items.length} image${items.length === 1 ? "" : "s"} from the local project cache.`,
+      100,
+    );
+  } catch (error) {
+    console.warn("Badge Blur could not restore its cached project.", error);
+    showProgress(
+      "A saved project is available. Choose its original source folder to restore it.",
+      100,
+    );
+  } finally {
+    restoringCachedProject = false;
+  }
+  scheduleProjectCache();
+}
+
+async function prepareCachedProjectForSource(sourceName) {
+  if (
+    !cachedProject ||
+    cachedProject.snapshot?.sourceRootName !== sourceName
+  ) {
+    if (cachedProject) {
+      cachedProject = null;
+      importedManifest = null;
+      activeRun = null;
+    }
+    return;
+  }
+  importedManifest = cachedProject.snapshot;
+  restoreRunSettings(importedManifest);
+  activeRun = await cachedActiveRun(cachedProject, { request: true });
+  customExportDirectoryHandle = await usableCachedDirectory(
+    cachedProject.customExportDirectoryHandle,
+    { request: true },
+  );
+}
+
+async function cachedActiveRun(project, { request = false } = {}) {
+  const directory = await usableCachedDirectory(
+    project.activeRunDirectoryHandle,
+    { request },
+  );
+  if (!directory || !project.activeRun) return null;
+  return {
+    ...project.activeRun,
+    directory,
+  };
+}
+
+async function usableCachedDirectory(handle, { request = false } = {}) {
+  if (!handle) return null;
+  const permission = await directoryPermission(handle, "readwrite", request);
+  return permission === "granted" ? handle : null;
+}
+
+async function directoryPermission(handle, mode, request = false) {
+  if (!handle?.queryPermission) return "granted";
+  let permission = await handle.queryPermission({ mode });
+  if (
+    permission === "prompt" &&
+    request &&
+    typeof handle.requestPermission === "function"
+  ) {
+    permission = await handle.requestPermission({ mode });
+  }
+  return permission;
+}
+
+function restoreCachedSessionDetails(project) {
+  lastBatchDurationMs =
+    Number(project.lastBatchDurationMs) >= 0
+      ? Number(project.lastBatchDurationMs)
+      : null;
+  lastExportDurationMs =
+    Number(project.lastExportDurationMs) >= 0
+      ? Number(project.lastExportDurationMs)
+      : null;
+  activeIndex = clamp(
+    Number(project.activeIndex) || 0,
+    0,
+    Math.max(0, items.length - 1),
+  );
+  updateBatchTime();
+  updateExportTime();
+  void renderCarousel();
+}
+
+function formatCacheTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "an earlier session" : date.toLocaleString();
+}
+
+function scheduleProjectCache() {
+  if (
+    !projectCacheLoaded ||
+    restoringCachedProject ||
+    items.length === 0
+  ) {
+    return;
+  }
+  clearTimeout(projectCacheTimer);
+  projectCacheTimer = setTimeout(() => {
+    projectCacheTimer = null;
+    void persistProjectCache();
+  }, 250);
+}
+
+async function persistProjectCache() {
+  if (
+    !projectCacheLoaded ||
+    restoringCachedProject ||
+    items.length === 0
+  ) {
+    return;
+  }
+  const snapshot = buildProjectCacheSnapshot();
+  const project = {
+    documentType: PROJECT_CACHE_DOCUMENT_TYPE,
+    schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+    savedAt: new Date().toISOString(),
+    sourceDirectoryHandle,
+    customExportDirectoryHandle,
+    activeRunDirectoryHandle: activeRun?.directory || null,
+    activeRun: activeRun
+      ? {
+          runId: activeRun.runId,
+          runFolderName: activeRun.runFolderName,
+          parentLabel: activeRun.parentLabel,
+          generatedAt: activeRun.generatedAt,
+        }
+      : null,
+    activeIndex,
+    lastBatchDurationMs,
+    lastExportDurationMs,
+    snapshot,
+  };
+  try {
+    await saveActiveProjectCache(project);
+    cachedProject = project;
+  } catch (error) {
+    try {
+      const projectWithoutHandles = {
+        ...project,
+        sourceDirectoryHandle: null,
+        customExportDirectoryHandle: null,
+        activeRunDirectoryHandle: null,
+      };
+      await saveActiveProjectCache(projectWithoutHandles);
+      cachedProject = projectWithoutHandles;
+    } catch (fallbackError) {
+      console.warn(
+        "Badge Blur could not update its local project cache.",
+        fallbackError || error,
+      );
+    }
+  }
+}
+
+function buildProjectCacheSnapshot() {
+  const files = items.map((item) => checkpointEntry(item));
+  return {
+    documentType: CHECKPOINT_DOCUMENT_TYPE,
+    schemaVersion: CHECKPOINT_SCHEMA_VERSION,
+    appVersion: APP_VERSION,
+    runId: activeRun?.runId || null,
+    runFolderName: activeRun?.runFolderName || null,
+    sourceRootName:
+      sourceDirectoryHandle?.name || sourceRootName(items[0]?.file) || null,
+    generatedAt: activeRun?.generatedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    localOnly: true,
+    batchState: running ? "paused" : runState,
+    threshold: Number(elements.thresholdInput.value),
+    paddingPercent: Number(elements.paddingInput.value),
+    redactionStrength: Number(elements.strengthInput.value),
+    redactionStyle: elements.redactionStyleInput.value,
+    featherPercent: Number(elements.featherInput.value),
+    workerPreference: elements.workerCountInput.value,
+    detectionPhrases: elements.labelsInput.value,
+    enhancedTorsoRescue: elements.enhancedInput.checked,
+    summary: summarizeCheckpointFiles(files),
+    files,
+  };
 }
 
 function deserializeMask(mask) {
@@ -690,7 +1035,12 @@ function loadImage(url) {
 }
 
 function releaseItems() {
-  for (const item of items) releasePreview(item);
+  for (const item of items) {
+    releasePreview(item);
+    if (item.thumbnailUrl) URL.revokeObjectURL(item.thumbnailUrl);
+    item.thumbnailUrl = null;
+    item.thumbnailPromise = null;
+  }
 }
 
 function releasePreview(item) {
@@ -725,10 +1075,41 @@ async function ensurePreview(item) {
   return item.previewPromise;
 }
 
+async function ensureThumbnail(item) {
+  if (item.thumbnailUrl || item.thumbnailPromise || item.decodeError) {
+    return item.thumbnailPromise;
+  }
+  item.thumbnailPromise = (async () => {
+    try {
+      const response = await localImageRequest("/api/image/decode", item.file, {
+        width: 240,
+        height: 156,
+        fit: "cover",
+        quality: 72,
+      });
+      item.thumbnailUrl = URL.createObjectURL(response.blob);
+      const image = elements.filmstrip.querySelector(
+        `[data-filmstrip-id="${item.id}"] .filmstrip-thumb`,
+      );
+      if (image) {
+        image.src = item.thumbnailUrl;
+        image.hidden = false;
+        image.nextElementSibling.hidden = true;
+      }
+    } catch (error) {
+      console.warn(`Thumbnail unavailable for ${item.file.name}: ${error.message}`);
+    } finally {
+      item.thumbnailPromise = null;
+    }
+  })();
+  return item.thumbnailPromise;
+}
+
 async function loadModel() {
   if (modelWorkers.length || running) return;
   setModelStatus("loading", "Loading local model…");
   elements.loadModelButton.disabled = true;
+  elements.loadModelButton.hidden = true;
 
   try {
     modelWorkers.push(await loadModelWorker(1));
@@ -741,12 +1122,13 @@ async function loadModel() {
       "ready",
       `Local models ready · ${autoLabel}${resolvedWorkers} worker${resolvedWorkers === 1 ? "" : "s"}`,
     );
-    elements.loadModelButton.textContent = "Models loaded";
+    elements.loadModelButton.hidden = true;
   } catch (error) {
     console.error(error);
     setModelStatus("error", "Model load failed");
     elements.loadModelButton.disabled = false;
-    elements.loadModelButton.textContent = "Retry local model";
+    elements.loadModelButton.hidden = false;
+    elements.loadModelButton.textContent = "Retry local models";
     showProgress(
       `Could not load the bundled model: ${error.message}. Run npm run prepare and reload.`,
       0,
@@ -846,7 +1228,13 @@ async function runAll() {
   if (pendingIndices.length === 0) {
     batchPaused = false;
     runState = "completed";
+    activeIndex = 0;
     showProgress("Every image in this run is already saved.", 100);
+    showCompletion(
+      "Batch already complete",
+      "Every image is saved. Review begins with the first image.",
+    );
+    await renderCarousel();
     updateButtons();
     return;
   }
@@ -856,6 +1244,7 @@ async function runAll() {
   pauseRequested = false;
   batchPaused = false;
   runState = "running";
+  hideCompletion();
   lastBatchWorkerCount = null;
   batchStartedAt = performance.now();
   startBatchTimer();
@@ -944,6 +1333,8 @@ async function runAll() {
   await exportQueue.catch(() => undefined);
 
   lastBatchDurationMs = performance.now() - batchStartedAt;
+  lastExportDurationMs = totalRecordedExportTime();
+  updateExportTime();
   stopBatchTimer();
   const remaining = items.filter((item) => shouldProcessItem(item)).length;
   if (pauseRequested && remaining > 0) {
@@ -976,6 +1367,11 @@ async function runAll() {
   batchOperation = null;
   pauseRequested = false;
   batchPaused = false;
+  activeIndex = 0;
+  showCompletion(
+    "Batch processing complete",
+    `${finishedItemCount()} of ${items.length} images finished. Review begins with the first image.`,
+  );
   await renderCarousel();
   updateButtons();
   updateSummary();
@@ -1397,28 +1793,33 @@ async function renderCarousel() {
     if (!visibleItems.includes(item) && !item.processing) releasePreview(item);
   }
 
-  elements.reviewGrid.replaceChildren();
-  for (let offset = -CAROUSEL_RADIUS; offset <= CAROUSEL_RADIUS; offset += 1) {
-    const index = activeIndex + offset;
-    const slot = document.createElement("div");
-    slot.className = `carousel-slot ${offset === 0 ? "is-center" : "is-side"}`;
-    elements.reviewGrid.append(slot);
-    if (index < 0 || index >= items.length) {
-      slot.classList.add("is-empty");
-      continue;
-    }
-    const item = items[index];
-    try {
-      await ensurePreview(item);
-    } catch (error) {
-      item.status = "error";
-      item.message = error.message;
-      await ensureErrorPreview(item);
-    }
-    if (renderToken !== pageRenderToken) return;
-    renderItem(item, slot, offset === 0);
+  if (items.length === 0) {
+    elements.reviewGrid.replaceChildren();
+    updateCarouselControls();
+    return;
   }
+
+  elements.reviewGrid.classList.add("is-transitioning");
+  const item = items[activeIndex];
+  try {
+    await ensurePreview(item);
+  } catch (error) {
+    item.status = "error";
+    item.message = error.message;
+    await ensureErrorPreview(item);
+  }
+  if (renderToken !== pageRenderToken) return;
+  elements.reviewGrid.replaceChildren();
+  const slot = document.createElement("div");
+  slot.className = "carousel-slot is-center";
+  elements.reviewGrid.append(slot);
+  renderItem(item, slot, true);
   updateCarouselControls();
+  updateFilmstripSelection();
+  requestAnimationFrame(() => {
+    elements.reviewGrid.classList.remove("is-transitioning");
+  });
+  void preloadCarouselNeighbors();
 }
 
 function queueCarouselRender() {
@@ -1439,6 +1840,115 @@ function isItemVisible(item) {
   return carouselItems().includes(item);
 }
 
+function renderFilmstrip() {
+  thumbnailObserver?.disconnect();
+  elements.filmstrip.replaceChildren();
+  elements.filmstrip.hidden = items.length === 0;
+  if (items.length === 0) return;
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
+  if (typeof IntersectionObserver === "function") {
+    thumbnailObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const item = itemById.get(entry.target.dataset.filmstripId);
+          if (item) void ensureThumbnail(item);
+          thumbnailObserver.unobserve(entry.target);
+        }
+      },
+      {
+        root: elements.filmstrip,
+        rootMargin: "240px",
+        threshold: 0.01,
+      },
+    );
+  }
+
+  items.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "filmstrip-item";
+    button.dataset.filmstripId = item.id;
+    const filmstripState = filmstripStateForItem(item);
+    button.dataset.state = filmstripState.key;
+    button.setAttribute("aria-label", `Review image ${index + 1}: ${item.file.name}`);
+    button.innerHTML = `
+      <img class="filmstrip-thumb" alt="" hidden />
+      <span class="filmstrip-placeholder" aria-hidden="true">Loading…</span>
+      <span class="filmstrip-number">${index + 1}</span>
+      <span class="filmstrip-name"></span>
+      <span class="filmstrip-state"></span>
+    `;
+    button.querySelector(".filmstrip-name").textContent = item.file.name;
+    button.querySelector(".filmstrip-state").textContent = filmstripState.label;
+    if (item.thumbnailUrl) {
+      const image = button.querySelector(".filmstrip-thumb");
+      image.src = item.thumbnailUrl;
+      image.hidden = false;
+      button.querySelector(".filmstrip-placeholder").hidden = true;
+    }
+    button.addEventListener("click", () => {
+      void centerCarouselAt(index);
+    });
+    elements.filmstrip.append(button);
+    if (thumbnailObserver) thumbnailObserver.observe(button);
+    else if (index < 12) void ensureThumbnail(item);
+  });
+  updateFilmstripSelection({ scroll: false });
+}
+
+function updateFilmstripSelection({ scroll = true } = {}) {
+  for (const [index, button] of [
+    ...elements.filmstrip.querySelectorAll(".filmstrip-item"),
+  ].entries()) {
+    const active = index === activeIndex;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-current", active ? "true" : "false");
+  }
+  if (scroll) {
+    elements.filmstrip
+      .querySelector(".filmstrip-item.is-active")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
+}
+
+function updateFilmstripItem(item) {
+  const button = elements.filmstrip.querySelector(
+    `[data-filmstrip-id="${item.id}"]`,
+  );
+  if (!button) return;
+  const state = filmstripStateForItem(item);
+  button.dataset.state = state.key;
+  button.querySelector(".filmstrip-state").textContent = state.label;
+  button.title = item.message;
+}
+
+function filmstripStateForItem(item) {
+  if (item.processing || item.status === "running") {
+    return { key: "processing", label: "Processing" };
+  }
+  if (checkpointStatusForItem(item) === "completed") {
+    return { key: "done", label: "✓ Done" };
+  }
+  if (item.decodeError || item.status === "error" || item.exportError) {
+    return { key: "error", label: "Needs attention" };
+  }
+  if (item.status === "detected") {
+    return activeRun
+      ? { key: "saving", label: "Saving" }
+      : { key: "ready", label: "Ready for review" };
+  }
+  return { key: "waiting", label: "Waiting" };
+}
+
+async function preloadCarouselNeighbors() {
+  const neighbors = carouselItems().filter(
+    (item) => item !== items[activeIndex] && !item.previewImage,
+  );
+  await Promise.allSettled(neighbors.map((item) => ensurePreview(item)));
+}
+
 async function changeCarousel(direction) {
   if (running) return;
   const nextIndex = clamp(activeIndex + direction, 0, items.length - 1);
@@ -1446,7 +1956,7 @@ async function changeCarousel(direction) {
   activeIndex = nextIndex;
   updateButtons();
   await renderCarousel();
-  document.querySelector(".review-section")?.scrollIntoView({ behavior: "smooth" });
+  scheduleProjectCache();
 }
 
 function updateCarouselControls() {
@@ -1454,7 +1964,7 @@ function updateCarouselControls() {
   elements.pageStatus.textContent =
     items.length === 0
       ? "No images"
-      : `Image ${activeIndex + 1} of ${items.length} · active image centered`;
+      : `Image ${activeIndex + 1} of ${items.length} · use ← → or the filmstrip`;
   elements.previousPageButton.disabled = running || activeIndex === 0;
   elements.nextPageButton.disabled = running || activeIndex >= items.length - 1;
 }
@@ -1464,6 +1974,7 @@ async function centerCarouselAt(index) {
   activeIndex = index;
   updateButtons();
   await renderCarousel();
+  scheduleProjectCache();
 }
 
 function renderItem(item, slot, isActive) {
@@ -1557,6 +2068,7 @@ function renderItem(item, slot, isActive) {
 }
 
 function renderItemStatus(item) {
+  updateFilmstripItem(item);
   const card = document.querySelector(`[data-item-id="${item.id}"]`);
   if (!card) return;
   const status = card.querySelector(".item-status");
@@ -1833,7 +2345,11 @@ function scaleBox(box, scaleX, scaleY) {
 function drawBox(context, box, selected) {
   const scale = Math.max(context.canvas.width, context.canvas.height) / 1200;
   const lineWidth = Math.max(3, 4 * scale);
-  const color = selected ? "#ffb000" : box.source === "manual" ? "#00a878" : "#e53935";
+  const color = selected
+    ? "#ff9e1b"
+    : box.source === "manual"
+      ? "#00b38f"
+      : "#fe5000";
   context.save();
   context.fillStyle = `${color}24`;
   context.strokeStyle = color;
@@ -1849,7 +2365,8 @@ function drawBox(context, box, selected) {
       : " · corner-fit"
     : "";
   const label = `${box.label} · ${score}${fitLabel}`;
-  context.font = `600 ${Math.max(16, 19 * scale)}px system-ui`;
+  context.font =
+    `600 ${Math.max(16, 19 * scale)}px Mulish, Aptos, Arial, sans-serif`;
   const textWidth = context.measureText(label).width;
   const labelHeight = Math.max(26, 31 * scale);
   const labelY = Math.max(0, box.y - labelHeight);
@@ -1879,15 +2396,18 @@ function drawDeleteControl(context, box) {
   const canvasPerCssY = context.canvas.height / Math.max(rect.height, 1);
   const radiusX = 13 * canvasPerCssX;
   const radiusY = 13 * canvasPerCssY;
-  const center = {
-    x: clamp(box.x + box.width + 5 * canvasPerCssX, radiusX, context.canvas.width - radiusX),
-    y: clamp(box.y + box.height + 5 * canvasPerCssY, radiusY, context.canvas.height - radiusY),
-  };
+  const center = maskDeleteControlCenter(
+    box,
+    context.canvas.width,
+    context.canvas.height,
+    canvasPerCssX,
+    canvasPerCssY,
+  );
 
   context.save();
   context.beginPath();
   context.ellipse(center.x, center.y, radiusX, radiusY, 0, 0, Math.PI * 2);
-  context.fillStyle = "#b42318";
+  context.fillStyle = "#fe5000";
   context.fill();
   context.strokeStyle = "#ffffff";
   context.lineWidth = Math.max(2 * canvasPerCssX, 2);
@@ -1956,10 +2476,13 @@ function hitDeleteControl(point, box, canvas) {
   const sourcePerCssY = sourceHeight / Math.max(rect.height, 1);
   const hitRadiusX = 18 * sourcePerCssX;
   const hitRadiusY = 18 * sourcePerCssY;
-  const center = {
-    x: clamp(box.x + box.width + 5 * sourcePerCssX, 13 * sourcePerCssX, sourceWidth - 13 * sourcePerCssX),
-    y: clamp(box.y + box.height + 5 * sourcePerCssY, 13 * sourcePerCssY, sourceHeight - 13 * sourcePerCssY),
-  };
+  const center = maskDeleteControlCenter(
+    box,
+    sourceWidth,
+    sourceHeight,
+    sourcePerCssX,
+    sourcePerCssY,
+  );
   const dx = (point.x - center.x) / hitRadiusX;
   const dy = (point.y - center.y) / hitRadiusY;
   return dx * dx + dy * dy <= 1;
@@ -2066,6 +2589,21 @@ function updateExportDestination() {
       "Source folder handle unavailable; choose an export folder before the batch.";
   }
   elements.resetExportButton.hidden = !customExportDirectoryHandle;
+  updateButtons();
+}
+
+async function openExportFolder() {
+  if (!activeRun || !window.badgeBlurDesktop?.openExportFolder) return;
+  try {
+    const checkpointHandle = await activeRun.directory.getFileHandle(
+      "badge-blur-checkpoint.json",
+    );
+    const checkpointFile = await checkpointHandle.getFile();
+    await window.badgeBlurDesktop.openExportFolder(checkpointFile);
+  } catch (error) {
+    console.error("Could not open the export folder.", error);
+    showProgress(`Could not open the export folder: ${error.message}`, 100);
+  }
 }
 
 async function ensureExportRun({ allowPrompt = false } = {}) {
@@ -2163,12 +2701,21 @@ async function exportItemToRun(item, { updatePreview = false } = {}) {
     item.timing ||= { detectionMs: 0, exportMs: 0, totalMs: 0 };
     item.timing.exportMs = exportMs;
     item.timing.totalMs = item.timing.detectionMs + exportMs;
+    if (batchOperation === "batch") {
+      lastExportDurationMs = totalRecordedExportTime();
+      updateExportTime();
+    } else if (batchOperation !== "reexport") {
+      lastExportDurationMs = exportMs;
+      updateExportTime();
+    }
     renderItemStatus(item);
+    scheduleProjectCache();
   }
 }
 
 function scheduleItemExport(item) {
   if (item.status !== "detected" || running) return;
+  scheduleProjectCache();
   clearTimeout(itemExportTimers.get(item.id));
   itemExportTimers.set(
     item.id,
@@ -2193,6 +2740,7 @@ function scheduleAllEditedExports() {
     renderItemStatus(item);
     updateItemView(item);
   }
+  scheduleProjectCache();
   if (running) return;
   clearTimeout(settingsExportTimer);
   settingsExportTimer = setTimeout(() => {
@@ -2217,9 +2765,9 @@ async function exportAll() {
   running = true;
   batchOperation = "reexport";
   runState = "running";
-  const startedAt = performance.now();
-  batchStartedAt = startedAt;
-  startBatchTimer();
+  hideCompletion();
+  exportStartedAt = performance.now();
+  startExportTimer();
   updateButtons();
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
@@ -2233,16 +2781,21 @@ async function exportAll() {
     await queueItemExport(item, { updatePreview: true });
     if (!isItemVisible(item)) releasePreview(item);
   }
-  lastBatchDurationMs = performance.now() - startedAt;
-  stopBatchTimer();
+  lastExportDurationMs = performance.now() - exportStartedAt;
+  stopExportTimer();
   runState = "completed";
   await writeRunMetadata("completed");
   running = false;
   batchOperation = null;
+  activeIndex = 0;
+  showCompletion(
+    "Export complete",
+    `${items.filter((item) => item.exportRevision >= 0).length} redacted image${items.filter((item) => item.exportRevision >= 0).length === 1 ? "" : "s"} saved. Review begins with the first image.`,
+  );
   await renderCarousel();
   updateButtons();
   showProgress(
-    `Re-export finished in ${formatDuration(lastBatchDurationMs)} · ${run.runFolderName}`,
+    `Export finished in ${formatDuration(lastExportDurationMs)} · ${run.runFolderName}`,
     100,
   );
 }
@@ -2318,7 +2871,7 @@ function checkpointEntry(item) {
 
 function buildRunManifest() {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     appVersion: APP_VERSION,
     runId: activeRun.runId,
     runFolderName: activeRun.runFolderName,
@@ -2354,6 +2907,7 @@ function buildRunManifest() {
         : Number(computeBenchmarkScore.toFixed(1)),
     },
     batchDurationMs: lastBatchDurationMs,
+    exportDurationMs: lastExportDurationMs,
     files: items
       .filter((item) => item.exportRevision >= 0)
       .map((item) => manifestEntry(item)),
@@ -2663,13 +3217,13 @@ async function ensureErrorPreview(item) {
   canvas.width = 800;
   canvas.height = 500;
   const context = canvas.getContext("2d");
-  context.fillStyle = "#f3f4f2";
+  context.fillStyle = "#dbdcdb";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#5b1a1a";
-  context.font = "600 28px system-ui";
+  context.fillStyle = "#fe5000";
+  context.font = "600 28px Mulish, Aptos, Arial, sans-serif";
   context.fillText("Image not processed", 48, 82);
-  context.fillStyle = "#333333";
-  context.font = "20px system-ui";
+  context.fillStyle = "#373a36";
+  context.font = "20px Mulish, Aptos, Arial, sans-serif";
   const words = item.message.split(/\s+/);
   let line = "";
   let y = 130;
@@ -2700,6 +3254,7 @@ function updateSummary() {
     `${items.length} image${items.length === 1 ? "" : "s"} · ` +
     `${masks} mask${masks === 1 ? "" : "s"}` +
     (errors ? ` · ${errors} error${errors === 1 ? "" : "s"}` : "");
+  scheduleProjectCache();
 }
 
 function updateButtons() {
@@ -2720,6 +3275,7 @@ function updateButtons() {
     : "Start batch";
   elements.pauseResumeButton.hidden =
     (running && batchOperation !== "batch") || (!running && !batchPaused);
+  elements.pauseWorkflowArrow.hidden = elements.pauseResumeButton.hidden;
   elements.pauseResumeButton.disabled =
     !serverReady || (running && pauseRequested);
   elements.pauseResumeButton.textContent = running
@@ -2729,8 +3285,11 @@ function updateButtons() {
     : "Resume batch";
   elements.exportAllButton.disabled =
     !serverReady || !hasDetectedItems || batchLocked;
+  elements.exportAllButton.textContent = activeRun ? "Re-export all" : "Export all";
   elements.loadModelButton.disabled =
     !serverReady || Boolean(modelWorkers.length) || batchLocked;
+  elements.loadModelButton.hidden =
+    elements.modelStatus.dataset.state !== "error" || Boolean(modelWorkers.length);
   elements.chooseSourceButton.disabled = !serverReady || batchLocked;
   elements.folderInput.disabled = !serverReady || batchLocked;
   elements.changeExportButton.disabled =
@@ -2740,6 +3299,13 @@ function updateButtons() {
   elements.resetExportButton.disabled = !serverReady || batchLocked;
   elements.importRunButton.disabled = !serverReady || batchLocked;
   elements.quitAppButton.disabled = !serverReady || !lifecycleToken;
+  elements.openExportFolderButton.disabled =
+    !activeRun ||
+    !items.some((item) => item.exportRevision >= 0) ||
+    !window.badgeBlurDesktop?.openExportFolder;
+  elements.openExportFolderButton.hidden =
+    !window.badgeBlurDesktop?.openExportFolder;
+  elements.exportLocationOptions.hidden = Boolean(activeRun);
   for (const control of [
     elements.labelsInput,
     elements.enhancedInput,
@@ -2757,7 +3323,21 @@ function updateButtons() {
 
 function setModelStatus(state, text) {
   elements.modelStatus.dataset.state = state;
-  elements.modelStatus.textContent = text;
+  const title = elements.modelStatus.querySelector("strong");
+  const detail = elements.modelStatus.querySelector(":scope > div > span");
+  const [headline, ...rest] = String(text).split(" · ");
+  title.textContent =
+    state === "ready"
+      ? "Local models ready"
+      : state === "error"
+        ? "Local models unavailable"
+        : "Preparing local models";
+  detail.textContent =
+    rest.length > 0
+      ? rest.join(" · ")
+      : state === "ready"
+        ? headline
+        : text;
 }
 
 function updateRedactionStyleUI() {
@@ -2847,6 +3427,17 @@ function showProgress(text, percent) {
   elements.progressBar.style.width = `${clamp(percent, 0, 100)}%`;
 }
 
+function hideCompletion() {
+  elements.completionBanner.hidden = true;
+}
+
+function showCompletion(title, text) {
+  elements.completionBanner.querySelector("strong").textContent = title;
+  elements.completionText.textContent = text;
+  elements.completionBanner.hidden = false;
+  updateButtons();
+}
+
 function startBatchTimer() {
   stopBatchTimer();
   updateBatchTime();
@@ -2857,6 +3448,38 @@ function stopBatchTimer() {
   if (batchTimer) clearInterval(batchTimer);
   batchTimer = null;
   updateBatchTime();
+}
+
+function startExportTimer() {
+  stopExportTimer();
+  exportStartedAt = performance.now();
+  updateExportTime();
+  exportTimer = setInterval(updateExportTime, 250);
+}
+
+function stopExportTimer() {
+  if (exportTimer) clearInterval(exportTimer);
+  exportTimer = null;
+  updateExportTime();
+}
+
+function totalRecordedExportTime() {
+  return items.reduce(
+    (total, item) => total + (Number(item.timing?.exportMs) || 0),
+    0,
+  );
+}
+
+function updateExportTime() {
+  if (exportTimer && exportStartedAt != null) {
+    elements.exportTime.textContent =
+      `Exporting · ${formatDuration(performance.now() - exportStartedAt)}`;
+  } else if (lastExportDurationMs != null) {
+    elements.exportTime.textContent =
+      `Last export · ${formatDuration(lastExportDurationMs)}`;
+  } else {
+    elements.exportTime.textContent = "Not started";
+  }
 }
 
 function updateBatchTime() {

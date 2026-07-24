@@ -83,8 +83,10 @@ verify it and obtain any missing small files.
    detects people and searches enlarged upper-torso crops for missed badges.
 7. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
-8. Review the centered image in the left-to-right carousel. Its immediate
-   neighbors remain visible as smaller previews.
+8. Review the active image in the large viewer. Click or horizontally scroll
+   the thumbnail filmstrip, use Previous/Next, or press the left/right arrow
+   keys to move through the batch. The filmstrip labels each image as Waiting,
+   Processing, Saving, Done, Ready for review, or Needs attention.
 9. Drag over a missed badge to add a mask.
 10. Click a mask and drag its four corner handles to match badge perspective.
 11. Open **Advanced settings** only when you need to change detection,
@@ -93,6 +95,11 @@ verify it and obtain any missing small files.
 12. Click a false mask and use **Remove selected** or the Delete key.
 13. Toggle **Before · edit masks** and **After · exported** to compare the
     current mask with its redacted output.
+
+When processing finishes, Badge Blur returns to the first image and shows a
+green completion banner. In the Electron app, choose **Open export folder** to
+open the completed run in Finder or File Explorer. The header's half-circle
+control switches between light and dark themes.
 
 The default redaction is a smooth Gaussian blur sized to 3% of the badge's
 shorter edge. The Advanced settings panel can increase or decrease that
@@ -120,6 +127,15 @@ The timestamp and random run ID prevent a new export from reusing or
 overwriting an older run folder. Source subfolders are preserved inside each
 run so duplicate filenames from different folders do not collide.
 
+Badge Blur also keeps one active-project cache in the local browser/Electron
+profile. A refresh restores the source and export folder handles, queue state,
+settings, current review position, and edited masks when Chromium retains
+folder permission. If a browser does not retain its folder handle, Badge Blur
+prompts for the same source folder once and then reapplies the cached review.
+The cache stores project data locally and does not duplicate the source-image
+bytes or upload them. The on-disk run checkpoint remains the durable recovery
+record for crashes, app restarts, and moving a run to another computer.
+
 Original images remain read-only and are deliberately not copied into the
 output. Keeping the originals out avoids duplicating unredacted sensitive
 pixels and reduces storage use. To revise a run, click **Import previous run**,
@@ -141,6 +157,10 @@ three choices: keep processing, quit immediately, or pause safely and quit.
 The safe option finishes and saves active images, writes the checkpoint, then
 stops the private local service. Closing while already paused writes the
 paused checkpoint before shutdown.
+
+The interface keeps **Batch processing time** and **Export processing time**
+separate so a re-export does not erase detector timing. The run manifest
+records both durations.
 
 The COCO file records final reviewed quadrilaterals and COCO bounding boxes for
 later local model training; it does not train or alter the bundled model during
@@ -166,22 +186,26 @@ The MIE archive preserves the remaining source metadata for audit/recovery.
   native folder chooser consistently on both supported operating systems.
   Files are written sequentially into the source folder's `exports` subfolder
   unless the reviewer chooses another destination.
+- A local IndexedDB project cache protects the active review from page refresh.
+  It contains paths, settings, queue state, and masks—not duplicate source
+  images—and never leaves the computer.
 - Detection uses the selected bounded worker pool while redaction/export and
   audit-manifest writes remain sequential. Detection can overlap the previous
-  image's local export. Only three bounded 1200-pixel review previews plus
-  active worker previews are retained; full-resolution sources are opened only
-  for the active processing stages.
+  image's local export. Up to five bounded 1200-pixel review previews are
+  retained around the active image, while the filmstrip uses separate lazy
+  240×156 thumbnails. Full-resolution sources are opened only for active
+  processing stages.
 
 The one-time setup step does contact npm and Hugging Face to download public
 software/model files. Image processing after setup is local.
 
 ## Installers and portable packages
 
-The pause/resume and crash-checkpoint work is currently available as the
-source-only `0.19.0` version. Per the current testing plan, no `0.19.0`
-installer artifacts were produced. The most recent installable Electron
-artifacts remain `0.18.0`; use the source instructions below to test the newer
-workflow.
+The latest interface, filmstrip, pause/resume, and crash-checkpoint work is
+currently available as the source-only `0.20.0` version. Per the current
+testing plan, no `0.19.0` or `0.20.0` installer artifacts were produced. The
+most recent installable Electron artifacts remain `0.18.0`; use the source
+instructions below to test the newer workflow.
 
 ### Install and test on macOS
 
