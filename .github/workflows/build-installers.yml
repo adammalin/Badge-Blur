@@ -82,6 +82,9 @@ jobs:
       - name: Install build dependencies
         run: npm ci --ignore-scripts
 
+      - name: Prepare Windows installer helper
+        run: npm rebuild electron-winstaller
+
       - name: Download and verify local models
         shell: bash
         run: npm run prepare
