@@ -25,6 +25,7 @@
     "test:worker-pool": "node scripts/test-worker-pool.mjs",
     "test:classifier-policy": "node scripts/test-classifier-policy.mjs",
     "test:run-storage": "node scripts/test-run-storage.mjs",
+    "test:run-import": "node scripts/test-run-import.mjs",
     "test:checkpoint": "node scripts/test-checkpoint.mjs",
     "test:thumbnail": "node scripts/test-thumbnail-preview.mjs",
     "test:mask-controls": "node scripts/test-mask-controls.mjs",

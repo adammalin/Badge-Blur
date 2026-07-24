@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Require the exact Badge Blur manifest or checkpoint filename and validate
+  the run schema, source paths, and reviewed-mask data during import.
+- Reuse a previously authorized matching source folder automatically;
+  otherwise ask for the folder named in the run file and verify every
+  referenced image by relative path and byte size before restoring edits.
+
 ## 0.20.0 — 2026-07-24
 
 - Replaces the three-card carousel with a large single-image reviewer and a

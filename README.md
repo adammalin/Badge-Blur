@@ -139,10 +139,15 @@ record for crashes, app restarts, and moving a run to another computer.
 Original images remain read-only and are deliberately not copied into the
 output. Keeping the originals out avoids duplicating unredacted sensitive
 pixels and reduces storage use. To revise a run, click **Import previous run**,
-choose its `badge-removal-manifest.json`, and reselect the original source
-folder. The app restores final reviewed masks and run settings by relative path
-and verifies the source file size before applying them. It can also restore a
-run created by an earlier app version that contains compatible reviewed masks.
+choose its `badge-removal-manifest.json`, and follow the source-folder prompt
+if one appears. Badge Blur rejects unrelated JSON files and accepts only the
+appropriate run manifest or checkpoint. It verifies every referenced source
+image by relative path and file size before applying final reviewed masks and
+settings. If the matching source folder was previously authorized and is still
+available, Badge Blur restores it automatically. Otherwise, it asks for the
+source folder named in the run file and refuses a different or changed image
+set. It can also restore a run created by an earlier app version that contains
+compatible reviewed masks.
 
 To resume an interrupted batch in place, click **Import previous run**, choose
 the run's `badge-blur-checkpoint.json`, choose that exact existing run folder,

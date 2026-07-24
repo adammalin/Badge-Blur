@@ -47,6 +47,10 @@ import {
   loadActiveProjectCache,
   saveActiveProjectCache,
 } from "./project-cache.js";
+import {
+  validateRunImport,
+  validateSourceSelection,
+} from "./run-import.js";
 
 const APP_VERSION = "0.20.0";
 const IMAGE_API_VERSION = 6;
@@ -142,6 +146,7 @@ let importedManifest = null;
 let serverReady = false;
 let lifecycleToken = null;
 let sourceDirectoryHandle = null;
+let expectedSourceFolderName = null;
 let customExportDirectoryHandle = null;
 let activeRun = null;
 let batchStartedAt = null;
@@ -430,7 +435,7 @@ function chooseRunningQuitMode() {
   });
 }
 
-async function chooseSourceFolder() {
+async function chooseSourceFolder({ promptedByImport = false } = {}) {
   if (!serverReady || running) return;
   if (typeof window.showDirectoryPicker !== "function") {
     elements.folderInput.click();
@@ -442,7 +447,10 @@ async function chooseSourceFolder() {
       mode: "readwrite",
     });
     const selected = await collectDirectoryImages(handle);
+    validateSourceSelection(importedManifest, selected);
     sourceDirectoryHandle = handle;
+    expectedSourceFolderName = null;
+    elements.chooseSourceButton.textContent = "Choose source folder";
     customExportDirectoryHandle = null;
     await prepareCachedProjectForSource(handle.name);
     if (!isBatchCheckpoint(importedManifest) || !activeRun) {
@@ -456,6 +464,11 @@ async function chooseSourceFolder() {
     if (error.name !== "AbortError") {
       console.error(error);
       showProgress(`Could not open the source folder: ${error.message}`, 0);
+    } else if (promptedByImport && expectedSourceFolderName) {
+      showProgress(
+        `Run file loaded. Choose the original source folder named ${expectedSourceFolderName}.`,
+        100,
+      );
     }
   }
 }
@@ -480,25 +493,33 @@ async function collectDirectoryImages(directory, prefix = "") {
 }
 
 async function loadSelectedFiles(event) {
-  sourceDirectoryHandle = null;
-  customExportDirectoryHandle = null;
-  if (!isBatchCheckpoint(importedManifest) || !activeRun) {
-    activeRun = null;
+  try {
+    const selected = [...event.target.files]
+      .filter((file) => SUPPORTED_EXTENSIONS.has(fileExtension(file.name)))
+      .map((file) => ({
+        file,
+        relativePath: fallbackRelativePath(file),
+      }))
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    validateSourceSelection(importedManifest, selected);
+    sourceDirectoryHandle = null;
+    expectedSourceFolderName = null;
+    elements.chooseSourceButton.textContent = "Choose source folder";
+    customExportDirectoryHandle = null;
+    if (!isBatchCheckpoint(importedManifest) || !activeRun) {
+      activeRun = null;
+    }
+    await prepareCachedProjectForSource(
+      sourceRootName(selected[0]?.file) || "Selected folder",
+    );
+    elements.sourceFolderLabel.textContent =
+      `${sourceRootName(selected[0]?.file) || "Selected folder"} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
+    updateExportDestination();
+    await setSelectedFiles(selected);
+  } catch (error) {
+    console.error(error);
+    showProgress(`Could not open the source folder: ${error.message}`, 0);
   }
-  const selected = [...event.target.files]
-    .filter((file) => SUPPORTED_EXTENSIONS.has(fileExtension(file.name)))
-    .map((file) => ({
-      file,
-      relativePath: fallbackRelativePath(file),
-    }))
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-  await prepareCachedProjectForSource(
-    sourceRootName(selected[0]?.file) || "Selected folder",
-  );
-  elements.sourceFolderLabel.textContent =
-    `${sourceRootName(selected[0]?.file) || "Selected folder"} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
-  updateExportDestination();
-  await setSelectedFiles(selected);
 }
 
 async function setSelectedFiles(selected) {
@@ -562,31 +583,68 @@ async function importPreviousRun(event) {
   if (!file) return;
   try {
     const document = JSON.parse(await file.text());
-    if (!document || !Array.isArray(document.files)) {
-      throw new Error("This is not a Badge Blur run manifest.");
-    }
+    const importInfo = validateRunImport(file.name, document);
     if (isBatchCheckpoint(document)) {
       await attachCheckpointRunDirectory(document);
     } else {
       activeRun = null;
     }
     importedManifest = document;
+    expectedSourceFolderName = importInfo.sourceRootName;
     restoreRunSettings(document);
     if (items.length === 0) {
+      if (await restoreFromKnownSource(document)) return;
       showProgress(
         isBatchCheckpoint(document)
-          ? "Checkpoint and run folder loaded. Now choose the original source-image folder."
-          : "Previous run loaded. Now choose the original source-image folder.",
+          ? `Checkpoint and run folder loaded. Choose the original source folder named ${importInfo.sourceRootName}.`
+          : `Previous run loaded for ${importInfo.fileCount} image(s). Choose the original source folder named ${importInfo.sourceRootName}.`,
         100,
       );
+      elements.chooseSourceButton.textContent =
+        `Choose “${importInfo.sourceRootName}” folder`;
+      await chooseSourceFolder({ promptedByImport: true });
       return;
     }
     await restoreImportedRun();
   } catch (error) {
     console.error(error);
     importedManifest = null;
+    expectedSourceFolderName = null;
+    elements.chooseSourceButton.textContent = "Choose source folder";
     showProgress(`Could not import the previous run: ${error.message}`, 0);
   }
+}
+
+async function restoreFromKnownSource(manifest) {
+  const candidates = [
+    sourceDirectoryHandle,
+    cachedProject?.sourceDirectoryHandle,
+  ].filter(Boolean);
+  for (const handle of candidates) {
+    if (handle.name !== manifest.sourceRootName) continue;
+    if ((await directoryPermission(handle, "readwrite", true)) !== "granted") {
+      continue;
+    }
+    try {
+      const selected = await collectDirectoryImages(handle);
+      validateSourceSelection(manifest, selected);
+      sourceDirectoryHandle = handle;
+      expectedSourceFolderName = null;
+      customExportDirectoryHandle = null;
+      if (!isBatchCheckpoint(manifest) || !activeRun) {
+        activeRun = null;
+      }
+      elements.chooseSourceButton.textContent = "Choose source folder";
+      elements.sourceFolderLabel.textContent =
+        `${handle.name} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
+      updateExportDestination();
+      await setSelectedFiles(selected);
+      return true;
+    } catch (error) {
+      console.warn("A saved source-folder permission did not match this run.", error);
+    }
+  }
+  return false;
 }
 
 async function attachCheckpointRunDirectory(checkpoint) {
