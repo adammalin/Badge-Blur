@@ -107,14 +107,22 @@ jobs:
           if (-not $app) {
             throw "Packaged Badge Blur executable was not found."
           }
+          $stdoutLog = Join-Path $env:RUNNER_TEMP "badge-blur-smoke-stdout.log"
+          $stderrLog = Join-Path $env:RUNNER_TEMP "badge-blur-smoke-stderr.log"
           $process = Start-Process `
             -FilePath $app.FullName `
+            -RedirectStandardOutput $stdoutLog `
+            -RedirectStandardError $stderrLog `
             -PassThru
           if (-not $process.WaitForExit(120000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $stdoutLog) { Get-Content $stdoutLog }
+            if (Test-Path $stderrLog) { Get-Content $stderrLog }
             throw "Packaged Electron smoke test timed out."
           }
           $process.Refresh()
+          if (Test-Path $stdoutLog) { Get-Content $stdoutLog }
+          if (Test-Path $stderrLog) { Get-Content $stderrLog }
           if ($process.ExitCode -ne 0) {
             throw "Packaged Electron smoke test failed."
           }

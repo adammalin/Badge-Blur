@@ -25,9 +25,11 @@ const smokeUserDataPath = smokeTest
 if (smokeUserDataPath) {
   fs.mkdirSync(smokeUserDataPath, { recursive: true });
   app.setPath("userData", smokeUserDataPath);
-  app.once("quit", () => {
-    fs.rmSync(smokeUserDataPath, { recursive: true, force: true });
-  });
+  if (process.platform !== "win32") {
+    app.once("quit", () => {
+      fs.rmSync(smokeUserDataPath, { recursive: true, force: true });
+    });
+  }
 }
 
 let mainWindow = null;
@@ -189,6 +191,7 @@ function startLocalServer() {
 }
 
 function createMainWindow(url) {
+  let smokeDeadline = null;
   const icon =
     process.platform === "win32"
       ? path.join(app.getAppPath(), "packaging", "assets", "BadgeBlur.ico")
@@ -233,6 +236,7 @@ function createMainWindow(url) {
   });
   mainWindow.webContents.once("did-finish-load", async () => {
     if (!smokeTest) return;
+    clearTimeout(smokeDeadline);
     try {
       const capabilities = await mainWindow.webContents.executeJavaScript(`({
         appVersion: document.querySelector("meta[name='badge-blur-version']")?.content || null,
@@ -257,6 +261,27 @@ function createMainWindow(url) {
     }
     await beginQuit();
   });
+  mainWindow.webContents.once(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+      if (!smokeTest || !isMainFrame) return;
+      clearTimeout(smokeDeadline);
+      requestedExitCode = 1;
+      console.error(
+        `Electron smoke page failed to load (${errorCode}): ${errorDescription} · ${validatedUrl}`,
+      );
+      void beginQuit();
+    },
+  );
+  if (smokeTest) {
+    smokeDeadline = setTimeout(() => {
+      requestedExitCode = 1;
+      console.error(
+        `Electron smoke page timed out · loading=${mainWindow?.webContents.isLoading()} · ${mainWindow?.webContents.getURL()}`,
+      );
+      void beginQuit();
+    }, 30_000);
+  }
 
   void mainWindow.loadURL(url);
 }
