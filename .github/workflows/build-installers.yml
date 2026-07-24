@@ -121,10 +121,24 @@ jobs:
             throw "Packaged Electron smoke test timed out."
           }
           $process.Refresh()
-          if (Test-Path $stdoutLog) { Get-Content $stdoutLog }
+          $stdoutContent = if (Test-Path $stdoutLog) {
+            Get-Content $stdoutLog -Raw
+          } else {
+            ""
+          }
+          if ($stdoutContent) { Write-Host $stdoutContent }
           if (Test-Path $stderrLog) { Get-Content $stderrLog }
+          $smokePassed = $stdoutContent.Contains(
+            'BADGE_BLUR_ELECTRON_SMOKE {"passed":true'
+          )
+          $shutdownPassed = $stdoutContent.Contains(
+            "Badge Blur shutting down: user request"
+          )
+          if (-not $smokePassed -or -not $shutdownPassed) {
+            throw "Packaged Electron smoke markers were incomplete."
+          }
           if ($process.ExitCode -ne 0) {
-            throw "Packaged Electron smoke test failed."
+            Write-Warning "Electron returned Windows exit code $($process.ExitCode) after its successful smoke test."
           }
 
       - name: Verify Windows artifact

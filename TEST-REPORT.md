@@ -182,7 +182,9 @@ metadata. Electron smoke testing separately verifies that the sandboxed
 open-export-folder bridge is present alongside the native directory picker.
 The Windows workflow waits on the packaged application's main process with a
 bounded timeout instead of PowerShell's process-tree-wide `-Wait`, which can
-remain open on Electron helper processes after the self-test exits.
+remain open on Electron helper processes after the self-test exits. Acceptance
+requires both the explicit `passed:true` capability marker and the clean local
+service-shutdown marker from the packaged application.
 
 ## Parallel worker validation
 
