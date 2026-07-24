@@ -10,7 +10,7 @@ if [[ ! -d "${PWD}/.git" &&
       "${PWD}/package.json"; then
   DEFAULT_TARGET_DIRECTORY="${PWD}"
 else
-  DEFAULT_TARGET_DIRECTORY="${PWD}/Badge-Blur-source-test"
+  DEFAULT_TARGET_DIRECTORY="${HOME}/Badge-Blur-source-test"
 fi
 TARGET_DIRECTORY="${1:-${DEFAULT_TARGET_DIRECTORY}}"
 SKIP_SETUP="${BADGE_BLUR_BOOTSTRAP_SKIP_SETUP:-0}"

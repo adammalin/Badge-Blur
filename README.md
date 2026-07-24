@@ -285,20 +285,22 @@ request administrator access or install Node system-wide.
 
 #### Two-command source setup
 
-Open Terminal in the folder where the source copy should be created, then run
-these two commands:
+Open Terminal, then use these same two commands for the first install and every
+future update:
 
 ```bash
-curl --fail --location --show-error \
+/usr/bin/curl --fail --location --show-error \
   https://raw.githubusercontent.com/adammalin/Badge-Blur/main/scripts/bootstrap-mac-source-test.zsh \
-  --output badge-blur-bootstrap.zsh
-zsh badge-blur-bootstrap.zsh
+  --output "$HOME/Downloads/badge-blur-install.zsh"
+
+/bin/zsh "$HOME/Downloads/badge-blur-install.zsh" \
+  "$HOME/Badge-Blur-source-test"
 ```
 
 The first command only downloads the readable bootstrap script. The second
 command downloads the latest main-branch repo ZIP and runs the local setup. If
-`Badge-Blur-source-test` does not exist, it creates it. If that folder is an
-existing Badge Blur source-test installation, the script updates its
+`~/Badge-Blur-source-test` does not exist, it creates it. If that folder is an
+existing Badge Blur source-test installation, the same command updates its
 application source in place, reconciles dependencies, verifies the pinned
 local models, rebuilds, and launches the current version. Downloaded models,
 exports, and repository metadata are preserved. An unrelated folder is never
@@ -310,7 +312,8 @@ nested `Badge-Blur-source-test/Badge-Blur-source-test` copy.
 To use a different destination, supply it to the second command:
 
 ```bash
-zsh badge-blur-bootstrap.zsh /path/to/Badge-Blur-source-test
+/bin/zsh "$HOME/Downloads/badge-blur-install.zsh" \
+  /path/to/Badge-Blur-source-test
 ```
 
 Run the same two commands again whenever a newer version is available. Quit
@@ -320,8 +323,8 @@ will be safely updated rather than rejected.
 For later launches:
 
 ```bash
-cd Badge-Blur-source-test
-zsh scripts/start-mac-source-test.zsh
+cd "$HOME/Badge-Blur-source-test"
+/bin/zsh scripts/start-mac-source-test.zsh
 ```
 
 #### Manual source ZIP setup

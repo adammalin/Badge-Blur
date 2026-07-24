@@ -12,6 +12,8 @@
   lazy Before/After previews without a second folder prompt.
 - Prevent the source bootstrapper from creating another nested installation
   when it is run from inside an existing non-repository source-test folder.
+- Standardize the source-test install/update location at
+  `~/Badge-Blur-source-test` and document one canonical two-command installer.
 
 ## 0.20.0 — 2026-07-24
 
