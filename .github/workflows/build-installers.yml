@@ -96,6 +96,7 @@ jobs:
         run: npm run test:lifecycle
 
       - name: Test packaged Electron runtime
+        timeout-minutes: 5
         shell: powershell
         run: |
           $env:BADGE_BLUR_SMOKE_TEST = "1"
@@ -108,8 +109,12 @@ jobs:
           }
           $process = Start-Process `
             -FilePath $app.FullName `
-            -PassThru `
-            -Wait
+            -PassThru
+          if (-not $process.WaitForExit(120000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "Packaged Electron smoke test timed out."
+          }
+          $process.Refresh()
           if ($process.ExitCode -ne 0) {
             throw "Packaged Electron smoke test failed."
           }

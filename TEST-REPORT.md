@@ -180,6 +180,9 @@ The deterministic thumbnail regression verifies JPEG output at exactly
 240×156 while retaining the original image dimensions in the returned source
 metadata. Electron smoke testing separately verifies that the sandboxed
 open-export-folder bridge is present alongside the native directory picker.
+The Windows workflow waits on the packaged application's main process with a
+bounded timeout instead of PowerShell's process-tree-wide `-Wait`, which can
+remain open on Electron helper processes after the self-test exits.
 
 ## Parallel worker validation
 
