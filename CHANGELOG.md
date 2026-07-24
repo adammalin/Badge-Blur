@@ -7,6 +7,11 @@
 - Reuse a previously authorized matching source folder automatically;
   otherwise ask for the folder named in the run file and verify every
   referenced image by relative path and byte size before restoring edits.
+- In Electron, infer and verify the original source folder from a manifest that
+  remains under `<source>/exports/<run>/`, then repopulate the filmstrip and
+  lazy Before/After previews without a second folder prompt.
+- Prevent the source bootstrapper from creating another nested installation
+  when it is run from inside an existing non-repository source-test folder.
 
 ## 0.20.0 — 2026-07-24
 

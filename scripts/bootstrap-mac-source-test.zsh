@@ -3,7 +3,15 @@
 set -euo pipefail
 
 SOURCE_ARCHIVE_URL="${BADGE_BLUR_SOURCE_ARCHIVE_URL:-https://github.com/adammalin/Badge-Blur/archive/refs/heads/main.zip}"
-DEFAULT_TARGET_DIRECTORY="${PWD}/Badge-Blur-source-test"
+if [[ ! -d "${PWD}/.git" &&
+      -f "${PWD}/package.json" &&
+      -f "${PWD}/scripts/setup-mac-source-test.zsh" ]] &&
+    grep -Eq '"name"[[:space:]]*:[[:space:]]*"badge-blur"' \
+      "${PWD}/package.json"; then
+  DEFAULT_TARGET_DIRECTORY="${PWD}"
+else
+  DEFAULT_TARGET_DIRECTORY="${PWD}/Badge-Blur-source-test"
+fi
 TARGET_DIRECTORY="${1:-${DEFAULT_TARGET_DIRECTORY}}"
 SKIP_SETUP="${BADGE_BLUR_BOOTSTRAP_SKIP_SETUP:-0}"
 

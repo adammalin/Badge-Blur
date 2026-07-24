@@ -144,7 +144,10 @@ if one appears. Badge Blur rejects unrelated JSON files and accepts only the
 appropriate run manifest or checkpoint. It verifies every referenced source
 image by relative path and file size before applying final reviewed masks and
 settings. If the matching source folder was previously authorized and is still
-available, Badge Blur restores it automatically. Otherwise, it asks for the
+available, Badge Blur restores it automatically. In Electron, it can also infer
+the original source folder when the run file remains inside
+`<source>/exports/<run>/`, verify every referenced image, and immediately
+repopulate the filmstrip and Before/After reviewer. Otherwise, it asks for the
 source folder named in the run file and refuses a different or changed image
 set. It can also restore a run created by an earlier app version that contains
 compatible reviewed masks.
@@ -300,7 +303,9 @@ application source in place, reconciles dependencies, verifies the pinned
 local models, rebuilds, and launches the current version. Downloaded models,
 exports, and repository metadata are preserved. An unrelated folder is never
 overwritten. macOS includes `curl`, `unzip`, and `rsync`, so `wget` is not
-required.
+required. If the bootstrap is run from inside an existing non-repository Badge
+Blur source-test folder, it updates that folder directly instead of creating a
+nested `Badge-Blur-source-test/Badge-Blur-source-test` copy.
 
 To use a different destination, supply it to the second command:
 

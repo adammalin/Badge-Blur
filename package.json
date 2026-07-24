@@ -26,6 +26,7 @@
     "test:classifier-policy": "node scripts/test-classifier-policy.mjs",
     "test:run-storage": "node scripts/test-run-storage.mjs",
     "test:run-import": "node scripts/test-run-import.mjs",
+    "test:manifest-source": "node scripts/test-manifest-source-recovery.cjs",
     "test:checkpoint": "node scripts/test-checkpoint.mjs",
     "test:thumbnail": "node scripts/test-thumbnail-preview.mjs",
     "test:mask-controls": "node scripts/test-mask-controls.mjs",

@@ -8,6 +8,7 @@ const {
   shell,
   utilityProcess,
 } = require("electron");
+const { recoverManifestSource } = require("./manifest-source.cjs");
 
 if (require("electron-squirrel-startup")) {
   app.quit();
@@ -41,6 +42,7 @@ let quitting = false;
 let allowWindowClose = false;
 let requestedExitCode = 0;
 let preparingRendererQuit = false;
+const recoveredSourceFiles = new Map();
 
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
@@ -57,6 +59,50 @@ ipcMain.handle("badge-blur:open-export-folder", async (_event, checkpointPath) =
   if (error) throw new Error(error);
   return true;
 });
+
+ipcMain.handle(
+  "badge-blur:recover-manifest-source",
+  async (_event, manifestPath) => {
+    const recovery = recoverManifestSource(manifestPath);
+    recoveredSourceFiles.clear();
+    for (const file of recovery.files) {
+      recoveredSourceFiles.set(file.token, {
+        realPath: file.realPath,
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+        type: file.type,
+      });
+    }
+    return {
+      runId: recovery.runId,
+      runFolderName: recovery.runFolderName,
+      sourceRootName: recovery.sourceRootName,
+      files: recovery.files.map(({ realPath: _realPath, ...file }) => file),
+    };
+  },
+);
+
+ipcMain.handle(
+  "badge-blur:read-recovered-source",
+  async (_event, token) => {
+    const file = recoveredSourceFiles.get(token);
+    if (!file) {
+      throw new Error("The recovered source-image permission has expired.");
+    }
+    const stat = await fs.promises.stat(file.realPath);
+    if (!stat.isFile() || stat.size !== file.size) {
+      throw new Error(`${file.name} changed after the run was imported.`);
+    }
+    return {
+      bytes: await fs.promises.readFile(file.realPath),
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      type: file.type,
+    };
+  },
+);
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -243,12 +289,16 @@ function createMainWindow(url) {
         directoryPicker: typeof window.showDirectoryPicker === "function",
         openExportFolderBridge:
           typeof window.badgeBlurDesktop?.openExportFolder === "function",
+        manifestRecoveryBridge:
+          typeof window.badgeBlurDesktop?.recoverManifestSource === "function" &&
+          typeof window.badgeBlurDesktop?.readRecoveredSource === "function",
         localOnly: location.hostname === "127.0.0.1",
         userAgentIncludesElectron: navigator.userAgent.includes("Electron")
       })`);
       const passed =
         capabilities.directoryPicker &&
         capabilities.openExportFolderBridge &&
+        capabilities.manifestRecoveryBridge &&
         capabilities.localOnly &&
         capabilities.userAgentIncludesElectron;
       console.log(

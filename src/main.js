@@ -546,6 +546,7 @@ async function setSelectedFiles(selected) {
     redactedPreviewRevision: -1,
     editRevision: 0,
     exportRevision: -1,
+    importedRun: false,
     exportStatus: "Waiting for batch",
     timing: null,
     status: "queued",
@@ -589,6 +590,7 @@ async function importPreviousRun(event) {
     restoreRunSettings(document);
     if (items.length === 0) {
       if (await restoreFromKnownSource(document)) return;
+      if (await restoreFromManifestLocation(file, document)) return;
       showProgress(
         isBatchCheckpoint(document)
           ? `Checkpoint and run folder loaded. Choose the original source folder named ${importInfo.sourceRootName}.`
@@ -606,6 +608,52 @@ async function importPreviousRun(event) {
     expectedSourceFolderName = null;
     elements.chooseSourceButton.textContent = "Choose source folder";
     showProgress(`Could not import the previous run: ${error.message}`, 0);
+  }
+}
+
+async function restoreFromManifestLocation(file, manifest) {
+  if (!window.badgeBlurDesktop?.recoverManifestSource) return false;
+  try {
+    const recovery =
+      await window.badgeBlurDesktop.recoverManifestSource(file);
+    if (
+      recovery.runId !== manifest.runId ||
+      recovery.runFolderName !== manifest.runFolderName ||
+      recovery.sourceRootName !== manifest.sourceRootName
+    ) {
+      throw new Error("The recovered source folder belongs to a different run.");
+    }
+    const selected = recovery.files.map((source) => ({
+      relativePath: source.relativePath,
+      file: {
+        name: source.name,
+        size: source.size,
+        type: source.type,
+        lastModified: source.lastModified,
+        webkitRelativePath:
+          `${recovery.sourceRootName}/${source.relativePath}`,
+        desktopSourceToken: source.token,
+      },
+    }));
+    validateSourceSelection(manifest, selected);
+    sourceDirectoryHandle = null;
+    expectedSourceFolderName = null;
+    customExportDirectoryHandle = null;
+    if (!isBatchCheckpoint(manifest) || !activeRun) {
+      activeRun = null;
+    }
+    elements.chooseSourceButton.textContent = "Choose source folder";
+    elements.sourceFolderLabel.textContent =
+      `${recovery.sourceRootName} · ${selected.length} source image${selected.length === 1 ? "" : "s"} recovered from the run location`;
+    updateExportDestination();
+    await setSelectedFiles(selected);
+    return true;
+  } catch (error) {
+    console.info(
+      "Badge Blur could not recover the source folder from the run location.",
+      error,
+    );
+    return false;
   }
 }
 
@@ -745,10 +793,26 @@ async function restoreImportedRun() {
     item.selectedBoxId = null;
     item.imageInfo = entry.imageInfo || null;
     item.editRevision = Math.max(0, Number(entry.editRevision) || 0);
+    item.workerNumber = Number(entry.workerNumber) || null;
+    if (
+      entry.detectionTimeMs != null ||
+      entry.exportTimeMs != null ||
+      entry.processingTimeMs != null
+    ) {
+      item.timing = {
+        detectionMs: Number(entry.detectionTimeMs) || 0,
+        exportMs: Number(entry.exportTimeMs) || 0,
+        totalMs:
+          Number(entry.processingTimeMs) ||
+          (Number(entry.detectionTimeMs) || 0) +
+            (Number(entry.exportTimeMs) || 0),
+      };
+    }
     if (checkpoint) {
       const recoveryStatus = recoveryStatusForEntry(entry);
       if (recoveryStatus === "completed") {
         item.status = "detected";
+        item.importedRun = true;
         item.exportRevision = item.editRevision;
         item.exportedAt = entry.exportedAt || null;
         item.message =
@@ -757,6 +821,7 @@ async function restoreImportedRun() {
         completed += 1;
       } else if (recoveryStatus === "export-pending") {
         item.status = "detected";
+        item.importedRun = true;
         item.exportRevision = -1;
         item.message =
           `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} recovered`;
@@ -776,6 +841,7 @@ async function restoreImportedRun() {
       item.status = "detected";
       item.message = `${item.boxes.length} mask${item.boxes.length === 1 ? "" : "s"} restored`;
       item.editRevision += 1;
+      item.importedRun = true;
       item.exportStatus = "Restored · awaiting export";
     }
     restored += 1;
@@ -804,7 +870,22 @@ async function restoreImportedRun() {
       "Every saved image was restored. Review begins with the first image.",
     );
   }
+  if (restored > 0) {
+    void preloadImportedReviewStates();
+  }
   scheduleProjectCache();
+}
+
+async function preloadImportedReviewStates() {
+  const candidates = carouselItems().filter(
+    (item) => item.importedRun && item.status === "detected",
+  );
+  await Promise.allSettled(
+    candidates.map(async (item) => {
+      await Promise.all([ensureThumbnail(item), ensurePreview(item)]);
+      await ensureRedactedPreview(item);
+    }),
+  );
 }
 
 async function restoreCachedProject() {
@@ -1974,6 +2055,19 @@ function updateFilmstripItem(item) {
   button.dataset.state = state.key;
   button.querySelector(".filmstrip-state").textContent = state.label;
   button.title = item.message;
+  const thumbnail = button.querySelector(".filmstrip-thumb");
+  const redactedReady =
+    item.redactedPreviewUrl &&
+    item.redactedPreviewRevision === item.editRevision;
+  const preview =
+    item.viewMode === "after" && redactedReady
+      ? item.redactedPreviewUrl
+      : item.thumbnailUrl;
+  if (preview && thumbnail) {
+    thumbnail.src = preview;
+    thumbnail.hidden = false;
+    button.querySelector(".filmstrip-placeholder").hidden = true;
+  }
 }
 
 function filmstripStateForItem(item) {
@@ -1987,6 +2081,14 @@ function filmstripStateForItem(item) {
     return { key: "error", label: "Needs attention" };
   }
   if (item.status === "detected") {
+    if (item.importedRun) {
+      const afterReady =
+        item.redactedPreviewUrl &&
+        item.redactedPreviewRevision === item.editRevision;
+      return afterReady
+        ? { key: "ready", label: "Before + After ready" }
+        : { key: "ready", label: "Preparing review" };
+    }
     return activeRun
       ? { key: "saving", label: "Saving" }
       : { key: "ready", label: "Ready for review" };
@@ -2026,6 +2128,11 @@ async function centerCarouselAt(index) {
   activeIndex = index;
   updateButtons();
   await renderCarousel();
+  if (items[activeIndex]?.importedRun) {
+    void ensureRedactedPreview(items[activeIndex]).catch((error) => {
+      console.warn("Imported After preview was unavailable.", error);
+    });
+  }
   scheduleProjectCache();
 }
 
@@ -2044,7 +2151,7 @@ function renderItem(item, slot, isActive) {
       </div>
       <div class="comparison-toggle" role="group" aria-label="Before and after view">
         <button class="before-view" type="button">Before · edit masks</button>
-        <button class="after-view" type="button">After · exported</button>
+        <button class="after-view" type="button">After · redacted</button>
       </div>
       <div class="canvas-wrap">
         <canvas aria-label="Image with editable badge detections"></canvas>
@@ -2163,6 +2270,7 @@ function updateItemView(item) {
 async function setItemView(item, viewMode) {
   item.viewMode = viewMode;
   updateItemView(item);
+  updateFilmstripItem(item);
   if (viewMode !== "after") return;
   try {
     await ensureRedactedPreview(item);
@@ -2190,6 +2298,7 @@ function setRedactedPreview(item, blob) {
   item.redactedPreviewUrl = URL.createObjectURL(blob);
   item.redactedPreviewRevision = item.editRevision;
   updateItemView(item);
+  updateFilmstripItem(item);
 }
 
 function markItemEdited(item) {
@@ -3185,14 +3294,19 @@ function outputRelativePath(item) {
 }
 
 async function localImageRequest(path, file, options) {
+  const sourceFile = await materializeSourceFile(file);
   const headers = {
     "Content-Type": "application/octet-stream",
-    "X-Badge-Source-Name": encodeHeader(file.name),
+    "X-Badge-Source-Name": encodeHeader(sourceFile.name),
   };
   if (options) {
     headers["X-Badge-Options"] = encodeHeader(JSON.stringify(options));
   }
-  const response = await fetch(path, { method: "POST", headers, body: file });
+  const response = await fetch(path, {
+    method: "POST",
+    headers,
+    body: sourceFile,
+  });
   if (!response.ok) {
     let message = `Local image processing failed (${response.status}).`;
     try {
@@ -3211,12 +3325,17 @@ async function localImageRequest(path, file, options) {
 }
 
 async function localJsonRequest(path, file, options) {
+  const sourceFile = await materializeSourceFile(file);
   const headers = {
     "Content-Type": "application/octet-stream",
-    "X-Badge-Source-Name": encodeHeader(file.name),
+    "X-Badge-Source-Name": encodeHeader(sourceFile.name),
     "X-Badge-Options": encodeHeader(JSON.stringify(options || {})),
   };
-  const response = await fetch(path, { method: "POST", headers, body: file });
+  const response = await fetch(path, {
+    method: "POST",
+    headers,
+    body: sourceFile,
+  });
   const responseText = await response.text();
   let detail;
   try {
@@ -3236,6 +3355,30 @@ async function localJsonRequest(path, file, options) {
     throw new Error(detail.error || `Local image fitting failed (${response.status}).`);
   }
   return detail;
+}
+
+async function materializeSourceFile(file) {
+  if (!file?.desktopSourceToken) return file;
+  if (!window.badgeBlurDesktop?.readRecoveredSource) {
+    throw new Error("The Electron source-image bridge is unavailable.");
+  }
+  const recovered = await window.badgeBlurDesktop.readRecoveredSource(
+    file.desktopSourceToken,
+  );
+  if (
+    recovered.name !== file.name ||
+    Number(recovered.size) !== Number(file.size)
+  ) {
+    throw new Error(`${file.name} changed after the run was imported.`);
+  }
+  const bytes =
+    recovered.bytes instanceof Uint8Array
+      ? recovered.bytes
+      : new Uint8Array(recovered.bytes);
+  return new File([bytes], recovered.name, {
+    type: recovered.type || file.type,
+    lastModified: recovered.lastModified || file.lastModified,
+  });
 }
 
 function encodeHeader(value) {
