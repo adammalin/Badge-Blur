@@ -2,9 +2,10 @@
 
 set -euo pipefail
 
-SOURCE_ARCHIVE_URL="https://github.com/adammalin/Badge-Blur/archive/refs/heads/main.zip"
+SOURCE_ARCHIVE_URL="${BADGE_BLUR_SOURCE_ARCHIVE_URL:-https://github.com/adammalin/Badge-Blur/archive/refs/heads/main.zip}"
 DEFAULT_TARGET_DIRECTORY="${PWD}/Badge-Blur-source-test"
 TARGET_DIRECTORY="${1:-${DEFAULT_TARGET_DIRECTORY}}"
+SKIP_SETUP="${BADGE_BLUR_BOOTSTRAP_SKIP_SETUP:-0}"
 
 print ""
 print "Badge Blur — source test bootstrap"
@@ -24,13 +25,26 @@ if ! command -v unzip >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ -e "${TARGET_DIRECTORY}" ]]; then
-  print -u2 "The target already exists, so nothing was overwritten:"
-  print -u2 "${TARGET_DIRECTORY}"
-  print -u2 ""
-  print -u2 "Move or rename that folder, or provide a different destination:"
-  print -u2 "zsh badge-blur-bootstrap.zsh /path/to/new-folder"
+if [[ "${TARGET_DIRECTORY:A}" == "/" ||
+      "${TARGET_DIRECTORY:A}" == "${HOME:A}" ||
+      -L "${TARGET_DIRECTORY}" ]]; then
+  print -u2 "Refusing to update an unsafe target: ${TARGET_DIRECTORY}"
   exit 1
+fi
+
+UPDATE_EXISTING=0
+if [[ -e "${TARGET_DIRECTORY}" ]]; then
+  if [[ ! -d "${TARGET_DIRECTORY}" ||
+        ! -f "${TARGET_DIRECTORY}/package.json" ||
+        ! -f "${TARGET_DIRECTORY}/scripts/setup-mac-source-test.zsh" ]] ||
+      ! grep -q '"name"[[:space:]]*:[[:space:]]*"badge-blur"' \
+        "${TARGET_DIRECTORY}/package.json"; then
+    print -u2 "The existing target is not a recognized Badge Blur source-test folder:"
+    print -u2 "${TARGET_DIRECTORY}"
+    print -u2 "Nothing was overwritten."
+    exit 1
+  fi
+  UPDATE_EXISTING=1
 fi
 
 TEMPORARY_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/badge-blur-bootstrap.XXXXXX")"
@@ -57,16 +71,39 @@ print "Expanding the source ZIP..."
 unzip -q "${ARCHIVE_PATH}" -d "${EXTRACT_DIRECTORY}"
 
 EXPANDED_DIRECTORY="${EXTRACT_DIRECTORY}/Badge-Blur-main"
-if [[ ! -f "${EXPANDED_DIRECTORY}/scripts/setup-mac-source-test.zsh" ]]; then
+if [[ ! -f "${EXPANDED_DIRECTORY}/scripts/setup-mac-source-test.zsh" ]] ||
+   ! grep -q '"name"[[:space:]]*:[[:space:]]*"badge-blur"' \
+     "${EXPANDED_DIRECTORY}/package.json"; then
   print -u2 "The downloaded archive did not contain the expected setup script."
   exit 1
 fi
 
-mv "${EXPANDED_DIRECTORY}" "${TARGET_DIRECTORY}"
+if (( UPDATE_EXISTING )); then
+  print "Updating the existing Badge Blur source-test folder..."
+  print "Preserving downloaded models, generated exports, and repository metadata."
+  rsync -a --delete \
+    --exclude "/.git/" \
+    --exclude "/node_modules/" \
+    --exclude "/public/models/" \
+    --exclude "/public/vendor/" \
+    --exclude "/exports/" \
+    --exclude "/badge-remover-output/" \
+    --exclude "/releases/" \
+    --exclude "/out/" \
+    "${EXPANDED_DIRECTORY}/" "${TARGET_DIRECTORY}/"
+else
+  mv "${EXPANDED_DIRECTORY}" "${TARGET_DIRECTORY}"
+fi
 
 print ""
-print "Source downloaded to:"
+if (( UPDATE_EXISTING )); then
+  print "Source updated in:"
+else
+  print "Source downloaded to:"
+fi
 print "${TARGET_DIRECTORY}"
 print ""
 
-zsh "${TARGET_DIRECTORY}/scripts/setup-mac-source-test.zsh"
+if [[ "${SKIP_SETUP}" != "1" ]]; then
+  zsh "${TARGET_DIRECTORY}/scripts/setup-mac-source-test.zsh"
+fi

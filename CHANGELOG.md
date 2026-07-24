@@ -36,6 +36,10 @@
   that do not retain folder permission ask the reviewer to reselect the same
   source folder before applying the cached review.
 - Adds deterministic 240×156 lazy-thumbnail generation coverage.
+- Updates the two-command macOS source bootstrap so rerunning it safely updates
+  a recognized Badge Blur source-test folder in place while preserving models
+  and user exports. Fresh setup now explicitly downloads and verifies the
+  pinned local models before launch.
 - Ships verified Apple-silicon Mac ZIP/DMG and Windows x64 installer artifacts
   with SHA-256 checksums through the tag-only release workflow.
 

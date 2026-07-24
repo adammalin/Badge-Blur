@@ -42,6 +42,10 @@ print "Installing the exact dependency versions from package-lock.json..."
 npm ci --no-audit --no-fund
 
 print ""
+print "Downloading or verifying the pinned local models and runtime files..."
+npm run prepare
+
+print ""
 print "Building the local interface..."
 npm run build
 

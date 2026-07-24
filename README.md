@@ -283,16 +283,24 @@ zsh badge-blur-bootstrap.zsh
 ```
 
 The first command only downloads the readable bootstrap script. The second
-command downloads the latest main-branch repo ZIP, expands it into a new
-`Badge-Blur-source-test` folder, and runs the local setup. It refuses to
-overwrite an existing folder. macOS includes `curl` and `unzip`, so `wget` is
-not required.
+command downloads the latest main-branch repo ZIP and runs the local setup. If
+`Badge-Blur-source-test` does not exist, it creates it. If that folder is an
+existing Badge Blur source-test installation, the script updates its
+application source in place, reconciles dependencies, verifies the pinned
+local models, rebuilds, and launches the current version. Downloaded models,
+exports, and repository metadata are preserved. An unrelated folder is never
+overwritten. macOS includes `curl`, `unzip`, and `rsync`, so `wget` is not
+required.
 
 To use a different destination, supply it to the second command:
 
 ```bash
 zsh badge-blur-bootstrap.zsh /path/to/Badge-Blur-source-test
 ```
+
+Run the same two commands again whenever a newer version is available. Quit
+the currently running Badge Blur window first; the existing source-test folder
+will be safely updated rather than rejected.
 
 For later launches:
 
