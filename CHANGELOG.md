@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Fix **Open export folder** when Chromium file-system handles omit native
+  paths by deriving and verifying source-based run folders, with an exact
+  checkpoint-verified folder prompt for custom destinations.
+- Keep Start/Pause/Export and the live progress bar in a fixed bottom dock
+  while the reviewer scrolls.
+- Run person detection before enhanced global filtering and reject badge
+  candidates outside every detected torso, preventing high-confidence
+  background signs from bypassing the negative classifier.
+- Keep Previous/Next, arrow-key, and filmstrip navigation active during batch
+  processing while temporarily locking mask edits.
+- Bound ONNX threads per model worker, yield between heavy local stages, and
+  stop re-centering or rebuilding the carousel when worker assignments change
+  so the interface retains responsive capacity.
 - Require the exact Badge Blur manifest or checkpoint filename and validate
   the run schema, source paths, and reviewed-mask data during import.
 - Reuse a previously authorized matching source folder automatically;

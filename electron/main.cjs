@@ -8,6 +8,11 @@ const {
   shell,
   utilityProcess,
 } = require("electron");
+const {
+  CHECKPOINT_NAME,
+  RUN_FOLDER_PATTERN,
+  resolveVerifiedExportFolder,
+} = require("./export-folder.cjs");
 const { recoverManifestSource } = require("./manifest-source.cjs");
 
 if (require("electron-squirrel-startup")) {
@@ -47,15 +52,36 @@ const recoveredSourceFiles = new Map();
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
 
-ipcMain.handle("badge-blur:open-export-folder", async (_event, checkpointPath) => {
-  if (
-    typeof checkpointPath !== "string" ||
-    !path.isAbsolute(checkpointPath) ||
-    path.basename(checkpointPath) !== "badge-blur-checkpoint.json"
-  ) {
-    throw new Error("Badge Blur could not verify the export folder.");
+ipcMain.handle("badge-blur:open-export-folder", async (_event, request) => {
+  const runFolderName = String(request?.runFolderName || "");
+  let folder = resolveVerifiedExportFolder(request);
+  if (!folder) {
+    if (!RUN_FOLDER_PATTERN.test(runFolderName)) {
+      throw new Error("Badge Blur could not verify the export folder.");
+    }
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: `Locate ${runFolderName}`,
+      buttonLabel: "Open export folder",
+      defaultPath: app.getPath("desktop"),
+      properties: ["openDirectory"],
+      message:
+        "Badge Blur could not recover the native folder path. Choose the exact run folder once.",
+    });
+    if (selection.canceled || selection.filePaths.length !== 1) return false;
+    const selectedFolder = selection.filePaths[0];
+    if (path.basename(selectedFolder) !== runFolderName) {
+      throw new Error(`Choose the export folder named ${runFolderName}.`);
+    }
+    folder = resolveVerifiedExportFolder({
+      checkpointPath: path.join(selectedFolder, CHECKPOINT_NAME),
+    });
   }
-  const error = await shell.openPath(path.dirname(checkpointPath));
+  if (!folder) {
+    throw new Error(
+      "The selected folder does not contain this run's checkpoint file.",
+    );
+  }
+  const error = await shell.openPath(folder);
   if (error) throw new Error(error);
   return true;
 });

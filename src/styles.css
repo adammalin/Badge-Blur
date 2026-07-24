@@ -87,6 +87,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  padding-bottom: 7.5rem;
   background:
     radial-gradient(circle at 90% 0%, rgb(0 102 44 / 22%), transparent 30rem),
     var(--background);
@@ -544,6 +545,52 @@ output {
 
 .workflow-toolbar {
   align-items: center;
+}
+
+.batch-dock {
+  position: fixed;
+  z-index: 50;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 0.75rem clamp(1rem, 4vw, 4rem);
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 -12px 38px rgb(55 58 54 / 18%);
+  backdrop-filter: blur(14px);
+}
+
+.batch-dock-inner {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 1fr);
+  gap: 1.2rem;
+  align-items: center;
+  max-width: 1312px;
+  margin: 0 auto;
+}
+
+.batch-dock .toolbar,
+.batch-dock .progress-wrap {
+  margin-top: 0;
+}
+
+.batch-dock-inner:has(.progress-wrap[hidden]) {
+  grid-template-columns: 1fr;
+}
+
+.batch-dock .progress-wrap {
+  min-width: 0;
+}
+
+.batch-dock .progress-wrap p {
+  overflow: hidden;
+  margin-bottom: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-wrap canvas.is-read-only {
+  cursor: default !important;
 }
 
 .workflow-arrow {
@@ -1149,6 +1196,19 @@ footer p {
 }
 
 @media (max-width: 760px) {
+  body {
+    padding-bottom: 11rem;
+  }
+
+  .batch-dock-inner {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .batch-dock .workflow-toolbar {
+    margin: 0;
+  }
+
   .masthead {
     display: grid;
     padding-top: 2rem;

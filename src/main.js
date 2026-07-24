@@ -44,6 +44,10 @@ import {
 import { runWorkerPool } from "./worker-pool.js";
 import { maskDeleteControlCenter } from "./mask-controls.js";
 import {
+  candidateInsideTorso,
+  torsoRegionForPerson,
+} from "./person-guidance.js";
+import {
   loadActiveProjectCache,
   saveActiveProjectCache,
 } from "./project-cache.js";
@@ -68,11 +72,16 @@ const SUPPORTED_EXTENSIONS = new Set([
 const CAROUSEL_RADIUS = 2;
 const PROJECT_CACHE_DOCUMENT_TYPE = "badge-blur-active-project";
 const PROJECT_CACHE_SCHEMA_VERSION = 1;
+const INFERENCE_THREADS_PER_WORKER = Math.max(
+  1,
+  Math.min(3, (navigator.hardwareConcurrency || 4) - 2),
+);
 
 env.localModelPath = "/models/";
 env.allowRemoteModels = false;
 env.allowLocalModels = true;
 env.backends.onnx.wasm.wasmPaths = "/vendor/onnx/";
+env.backends.onnx.wasm.numThreads = INFERENCE_THREADS_PER_WORKER;
 
 const elements = {
   chooseSourceButton: document.querySelector("#chooseSourceButton"),
@@ -158,7 +167,6 @@ let exportTimer = null;
 let lastExportDurationMs = null;
 let computeBenchmarkScore = null;
 let exportQueue = Promise.resolve();
-let carouselRenderQueue = Promise.resolve();
 const itemExportTimers = new Map();
 let thumbnailObserver = null;
 let cachedProject = null;
@@ -238,7 +246,6 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (
-    !running &&
     (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
     items.length > 1
   ) {
@@ -247,6 +254,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key !== "Delete" && event.key !== "Backspace") return;
+  if (running) return;
   const selected = items.find((item) => item.selectedBoxId);
   if (selected) {
     event.preventDefault();
@@ -1411,9 +1419,9 @@ async function runAll() {
       item.processing = true;
       item.workerNumber = workerIndex + 1;
       activeIndices.add(index);
-      activeIndex = Math.min(...activeIndices);
-      await queueCarouselRender();
+      renderItemStatus(item);
       showBatchWorkerProgress(completed, activeIndices.size, workerCount);
+      await yieldToUi();
 
       try {
         if (item.status !== "detected") {
@@ -1454,9 +1462,9 @@ async function runAll() {
       } finally {
         item.processing = false;
         activeIndices.delete(index);
-        activeIndex = activeIndices.size ? Math.min(...activeIndices) : index;
         showBatchWorkerProgress(completed, activeIndices.size, workerCount);
-        await queueCarouselRender();
+        renderItemStatus(item);
+        await yieldToUi();
         if (!isItemVisible(item)) releasePreview(item);
       }
     },
@@ -1525,6 +1533,7 @@ async function detectItem(item, models = modelWorkers[0]) {
     const prompt = normalizeGroundingPrompt(elements.labelsInput.value);
     elements.labelsInput.value = prompt;
     const threshold = Number(elements.thresholdInput.value);
+    await yieldToUi();
     const output = await models.detector(item.previewUrl, [prompt], {
       threshold,
       top_k: 40,
@@ -1535,8 +1544,16 @@ async function detectItem(item, models = modelWorkers[0]) {
       normalizeDetection(result, item, scaleX, scaleY),
     );
     const unverifiedModelBoxes = filterBadgeDetections(candidates, item);
+    const torsoRegions = elements.enhancedInput.checked
+      ? await detectPersonTorsoRegions(item, models)
+      : [];
     const globalVerification = elements.enhancedInput.checked
-      ? await verifyGlobalCandidates(item, unverifiedModelBoxes, models)
+      ? await verifyGlobalCandidates(
+          item,
+          unverifiedModelBoxes,
+          models,
+          torsoRegions,
+        )
       : { retained: unverifiedModelBoxes, rejected: [] };
     const modelBoxes = globalVerification.retained.map((box) =>
       withRectangleCorners({
@@ -1550,7 +1567,13 @@ async function detectItem(item, models = modelWorkers[0]) {
       }),
     );
     const torsoRescues = elements.enhancedInput.checked
-      ? await detectTorsoRescues(item, prompt, modelBoxes, models)
+      ? await detectTorsoRescues(
+          item,
+          prompt,
+          modelBoxes,
+          models,
+          torsoRegions,
+        )
       : [];
     const detectedBoxes = mergeGlobalWithTorsoRescues(
       modelBoxes,
@@ -1565,7 +1588,7 @@ async function detectItem(item, models = modelWorkers[0]) {
     item.message =
       `${item.boxes.length} likely badge${item.boxes.length === 1 ? "" : "s"}` +
       (globalVerification.rejected.length
-        ? ` · ${globalVerification.rejected.length} negative rejected`
+        ? ` · ${globalVerification.rejected.length} non-person/negative rejected`
         : "") +
       (torsoRescues.length ? ` · ${torsoRescues.length} torso rescue` : "") +
       (fittedCount ? ` · ${fittedCount} corner-fit` : " · rectangle fallback");
@@ -1587,10 +1610,20 @@ async function detectItem(item, models = modelWorkers[0]) {
   updateSummary();
 }
 
-async function verifyGlobalCandidates(item, boxes, models) {
+async function verifyGlobalCandidates(item, boxes, models, torsoRegions = []) {
   const retained = [];
   const rejected = [];
   for (const box of boxes) {
+    if (
+      torsoRegions.length > 0 &&
+      !candidateInsideTorso(box, torsoRegions)
+    ) {
+      rejected.push({
+        ...box,
+        classifierDecision: "rejected-outside-person",
+      });
+      continue;
+    }
     if (box.score > GLOBAL_CLASSIFIER_MAX_SCORE) {
       retained.push({
         ...box,
@@ -1598,6 +1631,7 @@ async function verifyGlobalCandidates(item, boxes, models) {
       });
       continue;
     }
+    await yieldToUi();
     const evidence = await classifyBadgePatch(
       item,
       box,
@@ -1637,9 +1671,10 @@ function normalizeGroundingPrompt(value) {
   return `${prompt || "identification badge"}.`;
 }
 
-async function detectTorsoRescues(item, prompt, globalBoxes, models) {
+async function detectPersonTorsoRegions(item, models) {
   const scaleX = item.width / item.previewImage.naturalWidth;
   const scaleY = item.height / item.previewImage.naturalHeight;
+  await yieldToUi();
   const personOutput = await models.detector(item.previewUrl, ["person."], {
     threshold: PERSON_THRESHOLD,
     top_k: 30,
@@ -1650,20 +1685,20 @@ async function detectTorsoRescues(item, prompt, globalBoxes, models) {
       .filter((box) => isPlausiblePerson(box, item)),
     0.52,
   ).slice(0, 24);
-  const regions = deduplicateCropRegions(
+  return deduplicateCropRegions(
     persons.map((person) =>
-      boundedCropRegion(
-        {
-          left: person.x - person.width * 0.12,
-          top: person.y + person.height * 0.08,
-          width: person.width * 1.24,
-          height: person.height * 0.62,
-        },
-        item.width,
-        item.height,
-      ),
+      torsoRegionForPerson(person, item.width, item.height),
     ),
   );
+}
+
+async function detectTorsoRescues(
+  item,
+  prompt,
+  globalBoxes,
+  models,
+  regions,
+) {
   const candidates = [];
 
   for (const region of regions) {
@@ -1676,6 +1711,7 @@ async function detectTorsoRescues(item, prompt, globalBoxes, models) {
     });
     const torsoUrl = URL.createObjectURL(torso.blob);
     try {
+      await yieldToUi();
       const output = await models.detector(torsoUrl, [prompt], {
         threshold: TORSO_THRESHOLD,
         top_k: 30,
@@ -1755,6 +1791,7 @@ async function classifyBadgePatch(
   });
   const patchUrl = URL.createObjectURL(patch.blob);
   try {
+    await yieldToUi();
     const classifications = await models.rescueClassifier(
       patchUrl,
       labels,
@@ -1955,13 +1992,6 @@ async function renderCarousel() {
   void preloadCarouselNeighbors();
 }
 
-function queueCarouselRender() {
-  carouselRenderQueue = carouselRenderQueue
-    .catch(() => undefined)
-    .then(() => renderCarousel());
-  return carouselRenderQueue;
-}
-
 function carouselItems() {
   return items.slice(
     Math.max(0, activeIndex - CAROUSEL_RADIUS),
@@ -2104,7 +2134,6 @@ async function preloadCarouselNeighbors() {
 }
 
 async function changeCarousel(direction) {
-  if (running) return;
   const nextIndex = clamp(activeIndex + direction, 0, items.length - 1);
   if (nextIndex === activeIndex) return;
   activeIndex = nextIndex;
@@ -2119,12 +2148,12 @@ function updateCarouselControls() {
     items.length === 0
       ? "No images"
       : `Image ${activeIndex + 1} of ${items.length} · use ← → or the filmstrip`;
-  elements.previousPageButton.disabled = running || activeIndex === 0;
-  elements.nextPageButton.disabled = running || activeIndex >= items.length - 1;
+  elements.previousPageButton.disabled = activeIndex === 0;
+  elements.nextPageButton.disabled = activeIndex >= items.length - 1;
 }
 
 async function centerCarouselAt(index) {
-  if (running || index === activeIndex) return;
+  if (index === activeIndex) return;
   activeIndex = index;
   updateButtons();
   await renderCarousel();
@@ -2171,6 +2200,7 @@ function renderItem(item, slot, isActive) {
     const canvas = card.querySelector("canvas");
     setupCanvasInteraction(canvas, item);
     card.querySelector(".detect-one").addEventListener("click", async () => {
+      if (running) return;
       if (!modelWorkers.length) await loadModel();
       if (!modelWorkers.length) return;
       const startedAt = performance.now();
@@ -2184,9 +2214,11 @@ function renderItem(item, slot, isActive) {
       await queueItemExport(item, { updatePreview: true });
     });
     card.querySelector(".remove-box").addEventListener("click", () => {
+      if (running) return;
       removeSelectedBox(item);
     });
     card.querySelector(".export-one").addEventListener("click", () => {
+      if (running) return;
       queueItemExport(item, { updatePreview: true });
     });
     card.querySelector(".before-view").addEventListener("click", () => {
@@ -2219,8 +2251,9 @@ function renderItem(item, slot, isActive) {
     ? `${item.workerNumber ? `Worker ${item.workerNumber} · ` : ""}Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
     : "Timing available after processing";
   card.querySelector(".export-status").textContent = item.exportStatus;
-  card.querySelector(".detect-one").disabled = Boolean(item.decodeError);
-  card.querySelector(".export-one").disabled = Boolean(item.decodeError);
+  const reviewLocked = Boolean(item.decodeError) || running || item.processing;
+  card.querySelector(".detect-one").disabled = reviewLocked;
+  card.querySelector(".export-one").disabled = reviewLocked;
   renderItemStatus(item);
   drawItem(item);
   updateItemView(item);
@@ -2233,7 +2266,14 @@ function renderItemStatus(item) {
   const status = card.querySelector(".item-status");
   status.textContent = item.message;
   status.dataset.state = item.status;
-  card.querySelector(".remove-box").disabled = !item.selectedBoxId;
+  const reviewLocked = running || item.processing;
+  card.querySelector(".detect-one").disabled =
+    Boolean(item.decodeError) || reviewLocked;
+  card.querySelector(".remove-box").disabled =
+    !item.selectedBoxId || reviewLocked;
+  card.querySelector(".export-one").disabled =
+    Boolean(item.decodeError) || reviewLocked;
+  card.querySelector("canvas").classList.toggle("is-read-only", reviewLocked);
   const timing = card.querySelector(".item-timing");
   if (timing) {
     timing.textContent = item.timing
@@ -2320,6 +2360,7 @@ function setupCanvasInteraction(canvas, item) {
   let cornerDrag = null;
 
   canvas.addEventListener("pointerdown", (event) => {
+    if (running || item.processing) return;
     const point = canvasPoint(event, canvas);
     const deleteHit = [...item.boxes]
       .reverse()
@@ -2760,7 +2801,15 @@ async function openExportFolder() {
       "badge-blur-checkpoint.json",
     );
     const checkpointFile = await checkpointHandle.getFile();
-    await window.badgeBlurDesktop.openExportFolder(checkpointFile);
+    const sourceItem = items.find(
+      (item) => item.file && !item.file.desktopSourceToken,
+    );
+    await window.badgeBlurDesktop.openExportFolder({
+      checkpointFile,
+      sourceFile: sourceItem?.file || null,
+      sourceRelativePath: sourceItem ? sourceRelativePath(sourceItem) : "",
+      runFolderName: activeRun.runFolderName,
+    });
   } catch (error) {
     console.error("Could not open the export folder.", error);
     showProgress(`Could not open the export folder: ${error.message}`, 100);
@@ -3514,6 +3563,7 @@ function updateButtons() {
     control.disabled = batchLocked;
   }
   updateCarouselControls();
+  if (items[activeIndex]) renderItemStatus(items[activeIndex]);
 }
 
 function setModelStatus(state, text) {
@@ -3572,6 +3622,8 @@ function updateWorkerCountUI() {
     resolved,
     workerCapabilities(),
   );
+  description +=
+    ` · ${INFERENCE_THREADS_PER_WORKER} inference thread${INFERENCE_THREADS_PER_WORKER === 1 ? "" : "s"} each · UI capacity reserved`;
   if (preference === "4") {
     description += " · high-memory mode";
   } else if (preference === "auto") {
@@ -3701,6 +3753,10 @@ function formatDuration(milliseconds) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.round(totalSeconds % 60);
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function clamp(value, min, max) {

@@ -78,15 +78,18 @@ verify it and obtain any missing small files.
    paused state. Choose **Resume batch** to continue in the same run folder;
    already completed images are skipped.
 5. Grounding DINO runs one period-delimited grounding prompt over each image.
-6. With **Enhanced detection and filtering** enabled, the app uses CLIP to
-   reject only strongly negative lower-confidence full-image candidates, then
-   detects people and searches enlarged upper-torso crops for missed badges.
+6. With **Enhanced detection and filtering** enabled, the app detects people
+   first. When people are found, full-image candidates outside every verified
+   torso are rejected before CLIP checks ambiguous candidates; the same torso
+   regions are then searched for missed badges.
 7. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
 8. Review the active image in the large viewer. Click or horizontally scroll
    the thumbnail filmstrip, use Previous/Next, or press the left/right arrow
    keys to move through the batch. The filmstrip labels each image as Waiting,
-   Processing, Saving, Done, Ready for review, or Needs attention.
+   Processing, Saving, Done, Ready for review, or Needs attention. Navigation
+   remains available while other images are processing; mask editing stays
+   read-only until the active processing pass is safe.
 9. Drag over a missed badge to add a mask.
 10. Click a mask and drag its four corner handles to match badge perspective.
 11. Open **Advanced settings** only when you need to change detection,
@@ -98,8 +101,12 @@ verify it and obtain any missing small files.
 
 When processing finishes, Badge Blur returns to the first image and shows a
 green completion banner. In the Electron app, choose **Open export folder** to
-open the completed run in Finder or File Explorer. The header's half-circle
-control switches between light and dark themes.
+open the completed run in Finder or File Explorer. Source-based exports open
+directly; a custom destination may ask you to confirm the exact run folder
+once if Electron cannot recover its native path. The Start/Pause/Export
+controls and live progress remain attached to the bottom of the window while
+you scroll. The header's half-circle control switches between light and dark
+themes.
 
 The default redaction is a smooth Gaussian blur sized to 3% of the badge's
 shorter edge. The Advanced settings panel can increase or decrease that
@@ -110,7 +117,9 @@ Parallel processing defaults to **Auto**. The app uses logical-processor and
 runtime memory signals plus a short local compute benchmark to select one, two,
 or four detector workers conservatively. Manual 1/2/4 choices are available
 for controlled testing. Each worker owns a separate Grounding DINO and CLIP
-session; final files and manifests are still written one at a time.
+session; each session uses a bounded thread count so logical-processor capacity
+remains available for scrolling and review. Final files and manifests are still
+written one at a time.
 
 Each processed image is saved progressively into
 `source-folder/exports/badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` by default.

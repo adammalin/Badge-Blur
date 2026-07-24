@@ -155,7 +155,7 @@
               <input id="enhancedInput" type="checkbox" checked />
               <span>
                 Enhanced detection and filtering
-                <small>Slower; searches each person and rejects strong non-badge matches.</small>
+                <small>Slower; keeps detections on people, searches each torso, and rejects strong non-badge matches.</small>
               </span>
             </label>
 
@@ -231,24 +231,6 @@
           </div>
         </details>
 
-        <div class="toolbar workflow-toolbar" aria-label="Batch workflow">
-          <button id="runAllButton" class="button primary" disabled>
-            Start batch
-          </button>
-          <span id="pauseWorkflowArrow" class="workflow-arrow" aria-hidden="true">→</span>
-          <button
-            id="pauseResumeButton"
-            class="button secondary"
-            hidden
-            disabled
-          >
-            Pause after active images
-          </button>
-          <span id="exportWorkflowArrow" class="workflow-arrow" aria-hidden="true">→</span>
-          <button id="exportAllButton" class="button success" disabled>
-            Export all
-          </button>
-        </div>
         <div class="run-details" aria-live="polite">
           <div class="destination-detail">
             <span>Auto-save destination</span>
@@ -304,12 +286,6 @@
           trigger hundreds of individual downloads.
         </aside>
 
-        <div id="progressWrap" class="progress-wrap" hidden>
-          <div class="progress-track">
-            <div id="progressBar" class="progress-bar"></div>
-          </div>
-          <p id="progressText" aria-live="polite"></p>
-        </div>
         <div
           id="completionBanner"
           class="completion-banner"
@@ -376,6 +352,43 @@
         ></div>
       </section>
     </main>
+
+    <aside class="batch-dock" aria-label="Persistent batch workflow">
+      <div class="batch-dock-inner">
+        <div class="toolbar workflow-toolbar" aria-label="Batch workflow">
+          <button id="runAllButton" class="button primary" disabled>
+            Start batch
+          </button>
+          <span
+            id="pauseWorkflowArrow"
+            class="workflow-arrow"
+            aria-hidden="true"
+          >→</span>
+          <button
+            id="pauseResumeButton"
+            class="button secondary"
+            hidden
+            disabled
+          >
+            Pause after active images
+          </button>
+          <span
+            id="exportWorkflowArrow"
+            class="workflow-arrow"
+            aria-hidden="true"
+          >→</span>
+          <button id="exportAllButton" class="button success" disabled>
+            Export all
+          </button>
+        </div>
+        <div id="progressWrap" class="progress-wrap" hidden>
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <p id="progressText" aria-live="polite"></p>
+        </div>
+      </div>
+    </aside>
 
     <dialog id="quitDialog" class="quit-dialog">
       <h2>Batch processing is still running</h2>
