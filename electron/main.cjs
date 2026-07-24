@@ -383,6 +383,10 @@ async function beginQuit({ serverAlreadyStopped = false } = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.destroy();
   }
+  const forcedAppExit = setTimeout(() => {
+    process.exit(requestedExitCode);
+  }, 1_000);
+  forcedAppExit.unref();
   app.exit(requestedExitCode);
 }
 

@@ -44,6 +44,7 @@ import {
 import { runWorkerPool } from "./worker-pool.js";
 import { maskDeleteControlCenter } from "./mask-controls.js";
 import {
+  candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
   torsoRegionForPerson,
 } from "./person-guidance.js";
@@ -56,7 +57,7 @@ import {
   validateSourceSelection,
 } from "./run-import.js";
 
-const APP_VERSION = "0.20.0";
+const APP_VERSION = "0.21.0";
 const IMAGE_API_VERSION = 6;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -1616,7 +1617,8 @@ async function verifyGlobalCandidates(item, boxes, models, torsoRegions = []) {
   for (const box of boxes) {
     if (
       torsoRegions.length > 0 &&
-      !candidateInsideTorso(box, torsoRegions)
+      !candidateInsideTorso(box, torsoRegions) &&
+      !candidateLooksLikeCroppedForeground(box, item.width, item.height)
     ) {
       rejected.push({
         ...box,
@@ -2881,10 +2883,11 @@ async function exportItemToRun(item, { updatePreview = false } = {}) {
   item.exportStatus = activeRun ? "Auto-saving export…" : "Preparing after preview…";
   renderItemStatus(item);
   try {
-    const [blob, sidecar] = await Promise.all([
-      createRedactedBlob(item),
-      createMetadataSidecar(item),
-    ]);
+    // Keep the local service and source File readable under load by avoiding
+    // two simultaneous full-file uploads for the same image.
+    const blob = await createRedactedBlob(item);
+    await yieldToUi();
+    const sidecar = await createMetadataSidecar(item);
     if (updatePreview || isItemVisible(item) || item.viewMode === "after") {
       setRedactedPreview(item, blob);
     }
@@ -3351,7 +3354,7 @@ async function localImageRequest(path, file, options) {
   if (options) {
     headers["X-Badge-Options"] = encodeHeader(JSON.stringify(options));
   }
-  const response = await fetch(path, {
+  const response = await fetchLocalWithRetry(path, {
     method: "POST",
     headers,
     body: sourceFile,
@@ -3371,6 +3374,16 @@ async function localImageRequest(path, file, options) {
     blob: await response.blob(),
     info: encodedInfo ? JSON.parse(decodeHeader(encodedInfo)) : null,
   };
+}
+
+async function fetchLocalWithRetry(path, options) {
+  try {
+    return await fetch(path, options);
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    await yieldToUi();
+    return fetch(path, options);
+  }
 }
 
 async function localJsonRequest(path, file, options) {

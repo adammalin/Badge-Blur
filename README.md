@@ -219,7 +219,7 @@ software/model files. Image processing after setup is local.
 ## Installers and portable packages
 
 The latest interface, filmstrip, pause/resume, refresh recovery, and
-crash-checkpoint work is available in the `v0.20.0` GitHub release. That
+crash-checkpoint work is available in the `v0.21.0` GitHub release. That
 release includes the Apple-silicon Mac ZIP and DMG, a Windows x64 installer,
 and SHA-256 checksums. The source instructions remain available for testers
 whose managed computers cannot install unsigned applications.
@@ -227,8 +227,8 @@ whose managed computers cannot install unsigned applications.
 ### Install and test on macOS
 
 The current Mac package supports Apple-silicon Macs running macOS 13 or later.
-Download `Badge-Blur-Mac-arm64-v0.20.0.dmg` from the
-[v0.20.0 release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.20.0).
+Download `Badge-Blur-Mac-arm64-v0.21.0.dmg` from the
+[v0.21.0 release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.21.0).
 The matching ZIP also works, but the DMG is the preferred test package.
 
 1. Download the Mac artifact and unzip the GitHub artifact if necessary.

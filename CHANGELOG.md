@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.21.0 — 2026-07-24
+
 - Fix **Open export folder** when Chromium file-system handles omit native
   paths by deriving and verifying source-based run folders, with an exact
   checkpoint-verified folder prompt for custom destinations.
@@ -10,11 +12,22 @@
 - Run person detection before enhanced global filtering and reject badge
   candidates outside every detected torso, preventing high-confidence
   background signs from bypassing the negative classifier.
+- Extend person guidance through hanging lanyard cards and retain large
+  edge-cropped foreground badges, avoiding false rejection on partially
+  visible people while keeping off-person signs filtered.
 - Keep Previous/Next, arrow-key, and filmstrip navigation active during batch
   processing while temporarily locking mask edits.
 - Bound ONNX threads per model worker, yield between heavy local stages, and
   stop re-centering or rebuilding the carousel when worker assignments change
   so the interface retains responsive capacity.
+- Serialize full-resolution redaction and metadata uploads and retry one
+  transient loopback fetch failure so large batches do not compete with the
+  reviewer for local service capacity.
+- Select the current-version installer artifact explicitly when stale
+  Electron Forge output exists from an older local build.
+- Add a bounded Electron process-exit fallback after graceful private-service
+  shutdown so smoke tests, app exits, and installer workflows cannot retain a
+  ghost main process.
 - Require the exact Badge Blur manifest or checkpoint filename and validate
   the run schema, source paths, and reviewed-mask data during import.
 - Reuse a previously authorized matching source folder automatically;

@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-24
-Source version: `0.20.0`; latest packaged Electron release: `0.20.0`
+Source version: `0.21.0`; qualified packaged Electron release: `0.21.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -58,8 +58,8 @@ npm run test:badge-production
 | **0.14.0 conservative global CLIP filter** | **34/45** | **34** | **8** | **75.6%** | **81.0%** |
 | Experimental person-guided | 28/45 | 27 | 19 | 62.2% | 58.7% |
 
-The final enhanced production report is stored locally under
-`test-output/evaluation-20260724-091238-e2f74bb3/`. The v0.9 Grounding DINO
+The final enhanced production report was reproduced for 0.21.0 under
+`test-output/evaluation-20260724-173554-2d89e5a6/`. The v0.9 Grounding DINO
 report is under `test-output/evaluation-20260723-150039-0867c220/`.
 
 This test rejects unattended use: 11 reviewed badge points were still missed.
@@ -185,6 +185,42 @@ bounded timeout instead of PowerShell's process-tree-wide `-Wait`, which can
 remain open on Electron helper processes after the self-test exits. Acceptance
 requires both the explicit `passed:true` capability marker and the clean local
 service-shutdown marker from the packaged application.
+
+## Version 0.21.0 Electron release qualification
+
+The 0.21.0 release candidate was exercised through its actual Electron
+renderer and sandboxed preload bridge. The five synthetic fixtures were loaded
+into the visible reviewer with Auto selecting two workers. During live
+inference, the fifth image remained selectable and visible while two other
+images showed active processing states. The fixed workflow dock stayed at
+`bottom: 0px` while the reviewer was scrolled.
+
+The final clean run completed in 1m 32s, reset review to the first image, and
+auto-saved all five files. Filmstrip detection counts were `1, 2, 4, 1, 3`,
+covering all 11 expected synthetic badges with no extra masks. This live run
+caught and corrected two issues before release:
+
+- a strict person boundary initially excluded hanging and edge-cropped
+  foreground cards; and
+- simultaneous full-file redaction and metadata requests could exhaust a
+  loopback fetch under load.
+
+The final implementation keeps off-person background candidates rejected,
+extends person guidance through lanyard-card positions, treats a large
+edge-cropped card as a foreground-review candidate, serializes the two
+full-file export requests, and retries one transient loopback fetch.
+
+The repaired **Open export folder** action was then invoked through the actual
+Electron preload bridge using a disk-backed source file, its relative source
+path, and an exact checkpoint-verified run folder under the source
+`exports/` directory. The IPC returned `true` and opened the verified folder
+without the earlier “could not verify the export folder” error.
+
+The final Electron smoke also verified the 0.21.0 version, directory picker,
+manifest-recovery and export-folder preload bridges, loopback-only origin, and
+Electron user agent. After the local service reported its authenticated
+shutdown, a bounded final-exit fallback returned the Electron main process to
+the calling installer workflow instead of leaving a ghost process.
 
 ## Parallel worker validation
 

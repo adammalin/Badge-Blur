@@ -85,13 +85,18 @@ mkdirSync(releaseRoot, { recursive: true });
 const allFiles = collectFiles(makeRoot);
 
 for (const asset of targetConfig.assets) {
-  const matches = allFiles.filter((filePath) => {
+  const artifactCandidates = allFiles.filter((filePath) => {
     const name = path.basename(filePath);
     return (
       name.toLowerCase().endsWith(asset.extension) &&
       (!asset.nameIncludes || name.includes(asset.nameIncludes))
     );
   });
+  const versionMatches = artifactCandidates.filter((filePath) =>
+    path.basename(filePath).includes(packageJson.version),
+  );
+  const matches =
+    versionMatches.length === 1 ? versionMatches : artifactCandidates;
   if (matches.length !== 1) {
     throw new Error(
       `Expected one ${asset.extension} artifact, found ${matches.length}:\n` +

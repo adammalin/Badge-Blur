@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
   torsoRegionForPerson,
 } from "../src/person-guidance.js";
@@ -10,10 +11,10 @@ const region = torsoRegionForPerson(
   600,
 );
 assert.deepEqual(region, {
-  left: 108,
-  top: 85,
-  width: 184,
-  height: 320,
+  left: 110,
+  top: 65,
+  width: 180,
+  height: 470,
 });
 assert.equal(
   candidateInsideTorso(
@@ -21,6 +22,22 @@ assert.equal(
     [region],
   ),
   true,
+);
+assert.equal(
+  candidateLooksLikeCroppedForeground(
+    { x: 255, y: 768, width: 238, height: 255 },
+    1536,
+    1024,
+  ),
+  true,
+);
+assert.equal(
+  candidateLooksLikeCroppedForeground(
+    { x: 900, y: 300, width: 238, height: 255 },
+    1536,
+    1024,
+  ),
+  false,
 );
 assert.equal(
   candidateInsideTorso(
@@ -31,7 +48,14 @@ assert.equal(
 );
 assert.equal(
   candidateInsideTorso(
-    { x: 275, y: 360, width: 60, height: 80 },
+    { x: 165, y: 410, width: 70, height: 60 },
+    [region],
+  ),
+  true,
+);
+assert.equal(
+  candidateInsideTorso(
+    { x: 275, y: 500, width: 60, height: 80 },
     [region],
   ),
   false,
@@ -48,6 +72,8 @@ console.log(
   JSON.stringify({
     tightTorsoRegion: true,
     torsoBadgeRetained: true,
+    hangingLanyardBadgeRetained: true,
+    croppedForegroundBadgeRetained: true,
     backgroundSignRejected: true,
     partialOverlapRejected: true,
     noPersonFallbackPreserved: true,
