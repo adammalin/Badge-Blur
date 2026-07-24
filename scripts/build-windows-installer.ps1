@@ -91,19 +91,24 @@ if ($LASTEXITCODE -ne 0) {
   throw "Badge Blur native Windows launcher compilation failed."
 }
 
-$MakeNsis = Get-Command makensis.exe -ErrorAction SilentlyContinue
-if (-not $MakeNsis) {
+$MakeNsisCommand = Get-Command makensis.exe -ErrorAction SilentlyContinue
+$MakeNsisPath = if ($MakeNsisCommand) {
+  $MakeNsisCommand.Source
+} else {
+  $null
+}
+if (-not $MakeNsisPath) {
   $NsisPath = Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
   if (Test-Path $NsisPath) {
-    $MakeNsis = Get-Item $NsisPath
+    $MakeNsisPath = $NsisPath
   }
 }
-if (-not $MakeNsis) {
+if (-not $MakeNsisPath) {
   throw "NSIS was not found. Install NSIS before building the installer."
 }
 
 $InstallerScript = Join-Path $ProjectRoot "packaging/windows-installer.nsi"
-& $MakeNsis.Source `
+& $MakeNsisPath `
   "/DVERSION=$Version" `
   "/DSTAGE_DIR=$StageDirectory" `
   "/DOUTPUT_DIR=$OutputDirectory" `

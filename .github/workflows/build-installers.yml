@@ -40,7 +40,7 @@ jobs:
           shasum -a 256 -c Badge-Blur-Mac-arm64-v*.dmg.sha256
 
       - name: Archive Mac artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: badge-blur-macos-arm64
           path: |
@@ -93,7 +93,7 @@ jobs:
           }
 
       - name: Archive Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: badge-blur-windows-x64
           path: |
