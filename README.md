@@ -205,6 +205,54 @@ folders created by the tester are user data and are intentionally preserved.
 Apple's current instructions are available in
 [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
 
+### Run from source on a Mac without installing the unsigned app
+
+For a technically comfortable tester who cannot approve the unsigned
+`Badge Blur.app`, the supported alternative is to run the same Electron
+application from source. This does not install anything in `/Applications` and
+does not disable or alter Gatekeeper.
+
+Requirements:
+
+- An Apple-silicon Mac running macOS 13 or later.
+- Node.js 22 and npm installed through an approved route.
+- Internet access during first setup to download the pinned public npm
+  packages and local model files.
+
+1. Download the
+   [main branch source ZIP](https://github.com/adammalin/Badge-Blur/archive/refs/heads/main.zip)
+   and expand it.
+2. Open Terminal and change to the expanded folder. For example:
+
+   ```bash
+   cd ~/Downloads/Badge-Blur-main
+   ```
+
+3. Run the checked-in setup script explicitly with zsh:
+
+   ```bash
+   zsh scripts/setup-mac-source-test.zsh
+   ```
+
+The script verifies Node.js, installs the exact versions in
+`package-lock.json`, downloads and verifies the pinned models, builds the
+interface, and opens Badge Blur in Electron. It does not use `sudo`, copy an
+app into `/Applications`, call `xattr`, or change `spctl` settings. Close the
+window or press Command-Q to stop the app and its private local service.
+
+After the first setup, launch it again from the same source folder with:
+
+```bash
+npm start
+```
+
+To remove this source-run copy, quit Badge Blur and delete the expanded source
+folder. Export folders are separate user data and are not deleted.
+
+This route is intended for development testing, not broad deployment. A
+Developer ID-signed and notarized build, or an organization-managed deployment,
+is still the correct way to provide a warning-free installed Mac application.
+
 ### Synthetic demo test images
 
 The five fictional test photographs are tracked in
