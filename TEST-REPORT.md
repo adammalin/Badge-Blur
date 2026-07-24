@@ -128,7 +128,7 @@ masks and settings. Files are matched by relative path and byte size; changed
 files are skipped.
 
 The production UI records detection/export time per image, live elapsed batch
-time, and final batch duration in its schema-version-6 manifest. The
+time, and final batch duration in its manifest. The
 Before/After toggle uses the same full-resolution local redaction endpoint as
 the progressively written file.
 
@@ -178,7 +178,7 @@ at feather settings 0%, 12%, and 25%. The rendered outputs confirmed:
 The app UI exposes the Edge feather slider at its 10% default and explains the
 four-corner workflow. Corner edits are accepted only while the quadrilateral
 remains convex, preventing crossed or self-intersecting masks. Polygon points
-are stored in the version 6 audit manifest and as COCO segmentation data.
+are stored in the audit manifest and as COCO segmentation data.
 
 ## Redaction-strength regression
 
@@ -197,6 +197,14 @@ The supplied 8448 × 6336 regression photo was also sent through the running
 `/api/image/redact` endpoint using its three reviewed manifest masks. The
 three badge regions retained 24.1%, 23.5%, and 31.7% of their original edge
 detail, and the previously readable badge text was no longer legible.
+
+Version 0.12.0 changes the fresh-run default to a smooth Gaussian blur at 3%
+of each badge mask's shorter edge. The synthetic text-heavy badge retained
+19.5% of its original edge detail, with a 42.45-level mean interior pixel
+difference and zero change in the outside control region. On the supplied
+8448 × 6336 photograph, the three badge regions retained 16.3%, 21.5%, and
+29.2% of their original edge detail. Crop review confirmed that the text was
+unreadable without the previous visible pixel blocks.
 
 ## Automatic corner-fit validation
 

@@ -20,7 +20,7 @@ const packageRoot = resolve(scriptDirectory, "..");
 const appVersion = JSON.parse(
   readFileSync(resolve(packageRoot, "package.json"), "utf8"),
 ).version;
-const apiVersion = 3;
+const apiVersion = 4;
 
 if (!existsSync(root)) {
   console.error(`The packaged app is missing: ${root}`);

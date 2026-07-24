@@ -31,9 +31,13 @@ Use
 5. Review the centered image in the left-to-right carousel.
 6. Drag over missed badges to add masks.
 7. Click a mask and drag its four corner handles to match the badge.
-8. Adjust Edge feather to soften the expanded mask boundary.
+8. Open Advanced settings only when you need to change detection, smooth
+   Gaussian blur strength, mask expansion, or edge feather.
 9. Select false masks and remove them.
 10. Toggle Before and After to compare the editable mask and redacted export.
+
+Smooth Gaussian blur is the default. Advanced settings can adjust its strength
+or switch to the optional pixelated mosaic.
 
 The app does not modify or copy originals. As each image finishes, the app
 auto-saves it into a unique "exports/badge-remover-run-..." folder inside the

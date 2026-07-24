@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 — 2026-07-24
+
+- Uses a smooth, mask-size-aware Gaussian blur as the default redaction style.
+- Reduces the default strength to 3% of the badge's shorter edge while keeping
+  detected badge text unreadable in the supplied full-resolution regression
+  photograph.
+- Keeps the pixelated mosaic as an optional redaction style.
+- Adds redaction style and strength controls to the UI and records the chosen
+  style in the schema-version-7 run manifest.
+- Moves detection phrases, threshold, torso rescue, redaction style, strength,
+  mask expansion, and edge feather into a collapsed Advanced settings panel.
+- Bumps the local image API handshake so an older running server cannot process
+  the new redaction settings incorrectly.
+
 ## 0.11.0 — 2026-07-23
 
 - Automatically loads the bundled Grounding DINO and CLIP models after the

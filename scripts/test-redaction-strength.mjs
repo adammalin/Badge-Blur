@@ -42,12 +42,20 @@ const source = await sharp({
 
 const result = await redactImage(source, "synthetic-badge.png", {
   masks: [mask],
-  strength: 24,
+  style: "gaussian",
+  strength: 3,
+  featherPercent: 8,
+});
+const mosaicResult = await redactImage(source, "synthetic-badge.png", {
+  masks: [mask],
+  style: "mosaic",
+  strength: 6,
   featherPercent: 8,
 });
 
 const sourcePixels = await rawGreyscale(source);
 const outputPixels = await rawGreyscale(result.image);
+const mosaicPixels = await rawGreyscale(mosaicResult.image);
 const innerRegion = { left: 330, top: 250, width: 300, height: 190 };
 const outsideRegion = { left: 20, top: 20, width: 160, height: 80 };
 const sourceInnerEdges = meanEdgeEnergy(sourcePixels, width, innerRegion);
@@ -64,6 +72,19 @@ const outsideDifference = meanAbsoluteDifference(
   width,
   outsideRegion,
 );
+const mosaicInnerEdges = meanEdgeEnergy(mosaicPixels, width, innerRegion);
+const mosaicInsideDifference = meanAbsoluteDifference(
+  sourcePixels,
+  mosaicPixels,
+  width,
+  innerRegion,
+);
+const mosaicOutsideDifference = meanAbsoluteDifference(
+  sourcePixels,
+  mosaicPixels,
+  width,
+  outsideRegion,
+);
 
 assert.ok(
   outputInnerEdges < sourceInnerEdges * 0.35,
@@ -77,11 +98,25 @@ assert.ok(
   outsideDifference < 0.1,
   `Pixels well outside the mask changed unexpectedly; mean difference=${outsideDifference.toFixed(4)}`,
 );
+assert.ok(
+  mosaicInnerEdges < sourceInnerEdges * 0.5,
+  `Expected the optional mosaic to remove at least 50% of badge detail; source=${sourceInnerEdges.toFixed(2)}, output=${mosaicInnerEdges.toFixed(2)}`,
+);
+assert.ok(
+  mosaicInsideDifference > 15,
+  `Expected a material mosaic change inside the badge; mean difference=${mosaicInsideDifference.toFixed(2)}`,
+);
+assert.ok(
+  mosaicOutsideDifference < 0.1,
+  `Mosaic pixels well outside the mask changed unexpectedly; mean difference=${mosaicOutsideDifference.toFixed(4)}`,
+);
 
 console.log(
   JSON.stringify(
     {
       passed: true,
+      style: "gaussian",
+      strength: 3,
       sourceInnerEdgeEnergy: Number(sourceInnerEdges.toFixed(2)),
       outputInnerEdgeEnergy: Number(outputInnerEdges.toFixed(2)),
       detailRemainingPercent: Number(
@@ -89,6 +124,14 @@ console.log(
       ),
       insideMeanDifference: Number(insideDifference.toFixed(2)),
       outsideMeanDifference: Number(outsideDifference.toFixed(4)),
+      optionalMosaic: {
+        strength: 6,
+        detailRemainingPercent: Number(
+          ((mosaicInnerEdges / sourceInnerEdges) * 100).toFixed(1),
+        ),
+        insideMeanDifference: Number(mosaicInsideDifference.toFixed(2)),
+        outsideMeanDifference: Number(mosaicOutsideDifference.toFixed(4)),
+      },
     },
     null,
     2,

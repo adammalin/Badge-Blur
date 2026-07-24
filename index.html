@@ -50,102 +50,122 @@
           </p>
         </div>
 
-        <div class="control-grid">
-          <div class="file-picker">
-            <button id="chooseSourceButton" type="button">
-              Choose source folder
-            </button>
-            <small id="sourceFolderLabel">
-              JPEG, PNG, TIFF, WebP, AVIF, HEIC/HEIF
-            </small>
-            <input
-              id="folderInput"
-              type="file"
-              accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.avif,.heic,.heif"
-              webkitdirectory
-              multiple
-              hidden
-            />
-          </div>
-
-          <label>
-            Detection phrases
-            <input
-              id="labelsInput"
-              type="text"
-              value="identification badge. employee ID card. conference badge. security credential. name tag."
-            />
-            <small>Separate related descriptions with periods.</small>
-          </label>
-
-          <label>
-            Detection threshold
-            <div class="range-row">
-              <input
-                id="thresholdInput"
-                type="range"
-                min="0.01"
-                max="0.50"
-                value="0.20"
-                step="0.01"
-              />
-              <output id="thresholdOutput">0.20</output>
-            </div>
-          </label>
-
-          <label class="checkbox-control">
-            <input id="enhancedInput" type="checkbox" checked />
-            <span>
-              Enhanced torso rescue
-              <small>Slower; searches each detected person and rejects shirt details.</small>
-            </span>
-          </label>
-
-          <label>
-            Mask expansion
-            <div class="range-row">
-              <input
-                id="paddingInput"
-                type="range"
-                min="0"
-                max="40"
-                value="18"
-                step="1"
-              />
-              <output id="paddingOutput">18%</output>
-            </div>
-          </label>
-
-          <label>
-            Redaction strength
-            <div class="range-row">
-              <input
-                id="strengthInput"
-                type="range"
-                min="8"
-                max="40"
-                value="24"
-                step="1"
-              />
-              <output id="strengthOutput">24</output>
-            </div>
-          </label>
-
-          <label>
-            Edge feather
-            <div class="range-row">
-              <input
-                id="featherInput"
-                type="range"
-                min="0"
-                max="30"
-                value="10"
-                step="1"
-              />
-              <output id="featherOutput">10%</output>
-            </div>
-          </label>
+        <div class="file-picker source-picker">
+          <button id="chooseSourceButton" type="button">
+            Choose source folder
+          </button>
+          <small id="sourceFolderLabel">
+            JPEG, PNG, TIFF, WebP, AVIF, HEIC/HEIF
+          </small>
+          <input
+            id="folderInput"
+            type="file"
+            accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.avif,.heic,.heif"
+            webkitdirectory
+            multiple
+            hidden
+          />
         </div>
+
+        <details class="advanced-settings">
+          <summary>
+            <span>
+              Advanced settings
+              <small>Detection, mask, and blur controls</small>
+            </span>
+          </summary>
+          <div class="control-grid">
+            <label>
+              Detection phrases
+              <input
+                id="labelsInput"
+                type="text"
+                value="identification badge. employee ID card. conference badge. security credential. name tag."
+              />
+              <small>Separate related descriptions with periods.</small>
+            </label>
+
+            <label>
+              Detection threshold
+              <div class="range-row">
+                <input
+                  id="thresholdInput"
+                  type="range"
+                  min="0.01"
+                  max="0.50"
+                  value="0.20"
+                  step="0.01"
+                />
+                <output id="thresholdOutput">0.20</output>
+              </div>
+            </label>
+
+            <label class="checkbox-control">
+              <input id="enhancedInput" type="checkbox" checked />
+              <span>
+                Enhanced torso rescue
+                <small>Slower; searches each detected person and rejects shirt details.</small>
+              </span>
+            </label>
+
+            <label>
+              Redaction style
+              <select id="redactionStyleInput">
+                <option value="gaussian" selected>Smooth Gaussian blur</option>
+                <option value="mosaic">Pixelated mosaic</option>
+              </select>
+              <small id="redactionStyleHelp">
+                Smoothly obscures badge text without visible blocks.
+              </small>
+            </label>
+
+            <label>
+              <span id="strengthLabel">Blur strength</span>
+              <div class="range-row">
+                <input
+                  id="strengthInput"
+                  type="range"
+                  min="2"
+                  max="12"
+                  value="3"
+                  step="1"
+                />
+                <output id="strengthOutput">3</output>
+              </div>
+              <small id="strengthHelp">3% of the badge's shorter edge.</small>
+            </label>
+
+            <label>
+              Mask expansion
+              <div class="range-row">
+                <input
+                  id="paddingInput"
+                  type="range"
+                  min="0"
+                  max="40"
+                  value="18"
+                  step="1"
+                />
+                <output id="paddingOutput">18%</output>
+              </div>
+            </label>
+
+            <label>
+              Edge feather
+              <div class="range-row">
+                <input
+                  id="featherInput"
+                  type="range"
+                  min="0"
+                  max="30"
+                  value="10"
+                  step="1"
+                />
+                <output id="featherOutput">10%</output>
+              </div>
+            </label>
+          </div>
+        </details>
 
         <div class="toolbar">
           <button id="loadModelButton" class="button secondary">

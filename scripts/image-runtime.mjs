@@ -68,7 +68,8 @@ export async function redactImage(sourceBuffer, sourceName, options) {
     : Array.isArray(options.boxes)
       ? options.boxes
       : [];
-  const strength = clamp(Number(options.strength) || 24, 8, 40);
+  const style = options.style === "gaussian" ? "gaussian" : "mosaic";
+  const strength = clamp(Number(options.strength) || 3, 2, 12);
   const featherPercent = clamp(Number(options.featherPercent) || 0, 0, 30);
   const source = await pixelSource(sourceBuffer, info);
   const oriented = await source.png().toBuffer();
@@ -80,24 +81,42 @@ export async function redactImage(sourceBuffer, sourceName, options) {
       96,
       (Math.min(mask.width, mask.height) * featherPercent) / 100,
     );
-    const box = maskBounds(mask.points, info.width, info.height, featherPixels);
+    const gaussianSigma = clamp(
+      (Math.min(mask.width, mask.height) * strength) / 100,
+      1.5,
+      100,
+    );
+    const effectSupport = style === "gaussian"
+      ? Math.max(featherPixels, gaussianSigma)
+      : featherPixels;
+    const box = maskBounds(mask.points, info.width, info.height, effectSupport);
     if (box.width < 1 || box.height < 1) continue;
-    const reducedWidth = Math.max(1, Math.round(box.width / strength));
-    const reducedHeight = Math.max(1, Math.round(box.height / strength));
-    // Sharp only applies one resize per pipeline. Buffer the downscaled image
-    // before enlarging it again so the privacy mosaic cannot be optimized away.
-    const reducedPatch = await sharp(oriented)
-      .extract(box)
-      .resize(reducedWidth, reducedHeight, { fit: "fill" })
-      .png()
-      .toBuffer();
-    const pixelatedPatch = await sharp(reducedPatch)
-      .resize(box.width, box.height, { fit: "fill", kernel: "nearest" })
-      .blur(Math.max(1.5, strength / 8))
-      .png()
-      .toBuffer();
+    let redactedPatch;
+    if (style === "gaussian") {
+      redactedPatch = await sharp(oriented)
+        .extract(box)
+        .blur(gaussianSigma)
+        .png()
+        .toBuffer();
+    } else {
+      const mosaicDivisor = clamp(Math.round(4 + strength * 2), 8, 28);
+      const reducedWidth = Math.max(1, Math.round(box.width / mosaicDivisor));
+      const reducedHeight = Math.max(1, Math.round(box.height / mosaicDivisor));
+      // Sharp only applies one resize per pipeline. Buffer the downscaled image
+      // before enlarging it again so the privacy mosaic cannot be optimized away.
+      const reducedPatch = await sharp(oriented)
+        .extract(box)
+        .resize(reducedWidth, reducedHeight, { fit: "fill" })
+        .png()
+        .toBuffer();
+      redactedPatch = await sharp(reducedPatch)
+        .resize(box.width, box.height, { fit: "fill", kernel: "nearest" })
+        .blur(0.5)
+        .png()
+        .toBuffer();
+    }
     const polygonMask = polygonMaskSvg(mask.points, box, featherPixels);
-    const patch = await sharp(pixelatedPatch)
+    const patch = await sharp(redactedPatch)
       .composite([{ input: polygonMask, blend: "dest-in" }])
       .png()
       .toBuffer();

@@ -90,10 +90,16 @@ verify it and obtain any missing small files.
    neighbors remain visible as smaller previews.
 8. Drag over a missed badge to add a mask.
 9. Click a mask and drag its four corner handles to match badge perspective.
-10. Adjust **Edge feather** to soften the mask boundary.
+10. Open **Advanced settings** only when you need to change detection,
+    Gaussian blur strength, mask expansion, or edge feather.
 11. Click a false mask and use **Remove selected** or the Delete key.
 12. Toggle **Before · edit masks** and **After · exported** to compare the
     current mask with its redacted output.
+
+The default redaction is a smooth Gaussian blur sized to 3% of the badge's
+shorter edge. The Advanced settings panel can increase or decrease that
+strength or switch to the optional pixelated mosaic style. Changing a
+redaction setting refreshes and re-saves completed outputs in the active run.
 
 Each processed image is saved progressively into
 `source-folder/exports/badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` by default.
@@ -190,6 +196,8 @@ applicable ORNL security and software-management review.
   expanded fitted mask still covers the original detection.
 - Feathering softens the transition at the expanded mask boundary. Keep enough
   mask expansion to cover all sensitive badge pixels.
+- A lighter Gaussian setting can preserve too much text on unusually large or
+  high-contrast credentials. Always review the After view at useful zoom.
 - The bundled model is fixed during inference. Reviewed corrections are saved
   as local annotations but do not update the model automatically.
 - The frozen five-image synthetic browser test found all 11 visible badge

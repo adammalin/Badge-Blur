@@ -1,6 +1,6 @@
 {
   "name": "local-badge-remover",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Local-only browser MVP for detecting and redacting identification badges.",
   "type": "module",

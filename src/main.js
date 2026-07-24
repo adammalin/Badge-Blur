@@ -19,8 +19,8 @@ import {
   sourceRootName,
 } from "./run-storage.js";
 
-const APP_VERSION = "0.11.0";
-const IMAGE_API_VERSION = 3;
+const APP_VERSION = "0.12.0";
+const IMAGE_API_VERSION = 4;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -49,8 +49,12 @@ const elements = {
   thresholdOutput: document.querySelector("#thresholdOutput"),
   paddingInput: document.querySelector("#paddingInput"),
   paddingOutput: document.querySelector("#paddingOutput"),
+  redactionStyleInput: document.querySelector("#redactionStyleInput"),
+  redactionStyleHelp: document.querySelector("#redactionStyleHelp"),
   strengthInput: document.querySelector("#strengthInput"),
+  strengthLabel: document.querySelector("#strengthLabel"),
   strengthOutput: document.querySelector("#strengthOutput"),
+  strengthHelp: document.querySelector("#strengthHelp"),
   featherInput: document.querySelector("#featherInput"),
   featherOutput: document.querySelector("#featherOutput"),
   loadModelButton: document.querySelector("#loadModelButton"),
@@ -102,6 +106,7 @@ elements.paddingInput.addEventListener("input", () => {
 });
 elements.strengthInput.addEventListener("input", () => {
   elements.strengthOutput.value = elements.strengthInput.value;
+  updateRedactionStyleUI();
 });
 elements.featherInput.addEventListener("input", () => {
   elements.featherOutput.value = `${elements.featherInput.value}%`;
@@ -113,6 +118,10 @@ for (const input of [
 ]) {
   input.addEventListener("change", () => scheduleAllEditedExports());
 }
+elements.redactionStyleInput.addEventListener("change", () => {
+  updateRedactionStyleUI();
+  scheduleAllEditedExports();
+});
 elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
@@ -140,6 +149,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 updateButtons();
+updateRedactionStyleUI();
 void verifyLocalServer();
 
 async function verifyLocalServer() {
@@ -313,6 +323,10 @@ function restoreRunSettings(manifest) {
     input.value = String(value);
     output.value = format(value);
   }
+  elements.redactionStyleInput.value =
+    manifest.redactionStyle === "gaussian" ? "gaussian" : "mosaic";
+  elements.strengthOutput.value = elements.strengthInput.value;
+  updateRedactionStyleUI();
   if (manifest.detectionPhrases) {
     elements.labelsInput.value = normalizeGroundingPrompt(
       manifest.detectionPhrases,
@@ -1703,7 +1717,7 @@ async function writeRunMetadata() {
 
 function buildRunManifest() {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     appVersion: APP_VERSION,
     runId: activeRun.runId,
     runFolderName: activeRun.runFolderName,
@@ -1720,6 +1734,7 @@ function buildRunManifest() {
     threshold: Number(elements.thresholdInput.value),
     paddingPercent: Number(elements.paddingInput.value),
     redactionStrength: Number(elements.strengthInput.value),
+    redactionStyle: elements.redactionStyleInput.value,
     featherPercent: Number(elements.featherInput.value),
     batchDurationMs: lastBatchDurationMs,
     files: items
@@ -1849,6 +1864,7 @@ async function createRedactedBlob(item) {
   await ensurePreview(item);
   const response = await localImageRequest("/api/image/redact", item.file, {
     masks: item.boxes.map((box) => expandedMask(box, item)),
+    style: elements.redactionStyleInput.value,
     strength: Number(elements.strengthInput.value),
     featherPercent: Number(elements.featherInput.value),
   });
@@ -2079,6 +2095,18 @@ function updateButtons() {
 function setModelStatus(state, text) {
   elements.modelStatus.dataset.state = state;
   elements.modelStatus.textContent = text;
+}
+
+function updateRedactionStyleUI() {
+  const gaussian = elements.redactionStyleInput.value === "gaussian";
+  elements.strengthLabel.textContent =
+    gaussian ? "Blur strength" : "Mosaic strength";
+  elements.redactionStyleHelp.textContent = gaussian
+    ? "Smoothly obscures badge text without visible blocks."
+    : "Uses visible square pixels for a stronger redaction effect.";
+  elements.strengthHelp.textContent = gaussian
+    ? `${elements.strengthInput.value}% of the badge's shorter edge.`
+    : `Block scale ${elements.strengthInput.value} of 12.`;
 }
 
 function showProgress(text, percent) {
