@@ -66,8 +66,12 @@ try {
   );
   second.child.kill("SIGTERM");
   const secondExit = await waitForExit(second.child, 5000);
+  const expectedSignalExit =
+    process.platform === "win32"
+      ? secondExit.code === null && secondExit.signal === "SIGTERM"
+      : secondExit.code === 0 && secondExit.signal === null;
   assert(
-    secondExit.code === 0 && secondExit.signal === null,
+    expectedSignalExit,
     `Signal shutdown exited unexpectedly: ${JSON.stringify(secondExit)}`,
   );
   assert(
