@@ -3,10 +3,19 @@ import {
   CLASSIFIER_LABELS,
   CLASSIFIER_MARGIN,
   CLASSIFIER_MODEL_ID,
+  CLASSIFIER_POSITIVE_LABEL_COUNT,
+  GLOBAL_CLASSIFIER_LABELS,
+  GLOBAL_CLASSIFIER_MAX_SCORE,
+  GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
+  GLOBAL_CLASSIFIER_REJECT_MARGIN,
   MODEL_ID,
   PERSON_THRESHOLD,
   TORSO_THRESHOLD,
 } from "./detector-config.js";
+import {
+  classifierEvidence,
+  globalClassifierDecision,
+} from "./classifier-utils.js";
 import {
   deduplicateBadgeDetections,
   filterBadgeDetections,
@@ -25,7 +34,7 @@ import {
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.13.0";
+const APP_VERSION = "0.14.0";
 const IMAGE_API_VERSION = 4;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -406,6 +415,18 @@ function deserializeMask(mask) {
     fitReason: mask.fitReason || "Restored from a previous run.",
     userAdjusted: Boolean(mask.userAdjusted),
     detectionBounds: mask.detectionBounds ? { ...mask.detectionBounds } : null,
+    classifierPositiveScore:
+      mask.classifierPositiveScore == null
+        ? null
+        : Number(mask.classifierPositiveScore),
+    classifierNegativeScore:
+      mask.classifierNegativeScore == null
+        ? null
+        : Number(mask.classifierNegativeScore),
+    classifierMargin:
+      mask.classifierMargin == null ? null : Number(mask.classifierMargin),
+    classifierTopLabel: mask.classifierTopLabel || null,
+    classifierDecision: mask.classifierDecision || null,
   };
   restored.points =
     Array.isArray(mask.points) && mask.points.length === 4
@@ -650,7 +671,11 @@ async function detectItem(item, models = modelWorkers[0]) {
     const candidates = output.map((result) =>
       normalizeDetection(result, item, scaleX, scaleY),
     );
-    const modelBoxes = filterBadgeDetections(candidates, item).map((box) =>
+    const unverifiedModelBoxes = filterBadgeDetections(candidates, item);
+    const globalVerification = elements.enhancedInput.checked
+      ? await verifyGlobalCandidates(item, unverifiedModelBoxes, models)
+      : { retained: unverifiedModelBoxes, rejected: [] };
+    const modelBoxes = globalVerification.retained.map((box) =>
       withRectangleCorners({
         ...box,
         detectionBounds: {
@@ -670,10 +695,15 @@ async function detectItem(item, models = modelWorkers[0]) {
     );
     item.boxes = await autoFitDetectedMasks(item, detectedBoxes);
     item.modelBoxes = item.boxes.map(cloneMask);
+    item.globalClassifierRejectedCount = globalVerification.rejected.length;
+    item.globalClassifierRejected = globalVerification.rejected.map(cloneMask);
     item.status = "detected";
     const fittedCount = item.boxes.filter((box) => box.autoFitted).length;
     item.message =
       `${item.boxes.length} likely badge${item.boxes.length === 1 ? "" : "s"}` +
+      (globalVerification.rejected.length
+        ? ` · ${globalVerification.rejected.length} negative rejected`
+        : "") +
       (torsoRescues.length ? ` · ${torsoRescues.length} torso rescue` : "") +
       (fittedCount ? ` · ${fittedCount} corner-fit` : " · rectangle fallback");
   } catch (error) {
@@ -692,6 +722,45 @@ async function detectItem(item, models = modelWorkers[0]) {
     drawItem(item);
   }
   updateSummary();
+}
+
+async function verifyGlobalCandidates(item, boxes, models) {
+  const retained = [];
+  const rejected = [];
+  for (const box of boxes) {
+    if (box.score > GLOBAL_CLASSIFIER_MAX_SCORE) {
+      retained.push({
+        ...box,
+        classifierDecision: "kept-high-confidence",
+      });
+      continue;
+    }
+    const evidence = await classifyBadgePatch(
+      item,
+      box,
+      models,
+      GLOBAL_CLASSIFIER_LABELS,
+      GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
+    );
+    const classified = {
+      ...box,
+      classifierPositiveScore: evidence.positiveScore,
+      classifierNegativeScore: evidence.negativeScore,
+      classifierMargin: evidence.margin,
+      classifierTopLabel: evidence.topLabel,
+      classifierDecision: globalClassifierDecision(
+        box.score,
+        evidence,
+        GLOBAL_CLASSIFIER_MAX_SCORE,
+        GLOBAL_CLASSIFIER_REJECT_MARGIN,
+      ),
+    };
+    (classified.classifierDecision === "rejected-negative"
+      ? rejected
+      : retained
+    ).push(classified);
+  }
+  return { retained, rejected };
 }
 
 function normalizeGroundingPrompt(value) {
@@ -797,6 +866,23 @@ async function detectTorsoRescues(item, prompt, globalBoxes, models) {
 }
 
 async function classifyTorsoRescue(item, box, models) {
+  const evidence = await classifyBadgePatch(
+    item,
+    box,
+    models,
+    CLASSIFIER_LABELS,
+    CLASSIFIER_POSITIVE_LABEL_COUNT,
+  );
+  return evidence.margin >= CLASSIFIER_MARGIN;
+}
+
+async function classifyBadgePatch(
+  item,
+  box,
+  models,
+  labels,
+  positiveLabelCount,
+) {
   const region = paddedBoxRegion(box, item.width, item.height, 1.15);
   const patch = await localImageRequest("/api/image/crop", item.file, {
     region,
@@ -808,19 +894,9 @@ async function classifyTorsoRescue(item, box, models) {
   try {
     const classifications = await models.rescueClassifier(
       patchUrl,
-      CLASSIFIER_LABELS,
+      labels,
     );
-    const scores = Object.fromEntries(
-      classifications.map(({ label, score }) => [label, Number(score)]),
-    );
-    const positiveScore = Math.max(
-      scores[CLASSIFIER_LABELS[0]],
-      scores[CLASSIFIER_LABELS[1]],
-    );
-    const negativeScore = Math.max(
-      ...CLASSIFIER_LABELS.slice(2).map((label) => scores[label]),
-    );
-    return positiveScore - negativeScore >= CLASSIFIER_MARGIN;
+    return classifierEvidence(classifications, labels, positiveLabelCount);
   } finally {
     URL.revokeObjectURL(patchUrl);
   }
@@ -1846,7 +1922,7 @@ async function writeRunMetadata() {
 
 function buildRunManifest() {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     appVersion: APP_VERSION,
     runId: activeRun.runId,
     runFolderName: activeRun.runFolderName,
@@ -1860,6 +1936,13 @@ function buildRunManifest() {
     model: MODEL_ID,
     detectionPhrases: elements.labelsInput.value,
     enhancedTorsoRescue: elements.enhancedInput.checked,
+    globalNegativeClassifier: {
+      enabled: elements.enhancedInput.checked,
+      model: CLASSIFIER_MODEL_ID,
+      maxDetectionScore: GLOBAL_CLASSIFIER_MAX_SCORE,
+      rejectMargin: GLOBAL_CLASSIFIER_REJECT_MARGIN,
+      labels: GLOBAL_CLASSIFIER_LABELS,
+    },
     threshold: Number(elements.thresholdInput.value),
     paddingPercent: Number(elements.paddingInput.value),
     redactionStrength: Number(elements.strengthInput.value),
@@ -1913,6 +1996,10 @@ function manifestEntry(item) {
     detectionTimeMs: item.timing?.detectionMs || null,
     exportTimeMs: item.timing?.exportMs || null,
     workerNumber: item.workerNumber,
+    globalClassifierRejectedCount: item.globalClassifierRejectedCount || 0,
+    globalClassifierRejected: (item.globalClassifierRejected || []).map(
+      serializeBox,
+    ),
     initialModelMaskCount: initialModelMasks.length,
     initialModelMasks,
     reviewedMaskCount: finalMasks.length,
@@ -1996,6 +2083,11 @@ function serializeBox(box) {
           height: Math.round(box.detectionBounds.height),
         }
       : null,
+    classifierPositiveScore: box.classifierPositiveScore ?? null,
+    classifierNegativeScore: box.classifierNegativeScore ?? null,
+    classifierMargin: box.classifierMargin ?? null,
+    classifierTopLabel: box.classifierTopLabel ?? null,
+    classifierDecision: box.classifierDecision ?? null,
   };
 }
 

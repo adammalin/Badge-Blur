@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.14.0 — 2026-07-24
+
+- Adds a conservative CLIP verification pass for lower-confidence full-image
+  Grounding DINO detections.
+- Adds local negative classes for uniform patches and insignia, wall and
+  equipment labels, clothing details, clipped tools, and empty lanyard
+  hardware without adding those phrases to Grounding DINO's detection prompt.
+- Preserves detections above 50% Grounding DINO confidence and rejects a
+  lower-confidence candidate only when the strongest negative CLIP match leads
+  the strongest badge match by more than 0.50.
+- Improves the frozen 45-badge regression from 72.3% to 81.0% precision while
+  retaining 75.6% recall, removing five false masks without losing a known
+  badge on that set.
+- Records classifier evidence, decision, and rejected-candidate geometry in
+  the schema-version-9 run manifest for local audit and later hard-negative
+  training.
+- Adds a deterministic classifier-policy test and keeps the production
+  evaluator on the exact shipped verification path.
+
 ## 0.13.0 — 2026-07-24
 
 - Adds Auto, 1, 2, and 4-image parallel-processing choices under Advanced

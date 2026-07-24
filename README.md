@@ -37,8 +37,9 @@ Version 0.11.0 uses the Apache-2.0 quantized ONNX conversion of
 [`Grounding DINO Tiny`](https://huggingface.co/onnx-community/grounding-dino-tiny-ONNX).
 Enhanced mode adds the quantized Transformers.js conversion of
 [`CLIP ViT-B/32`](https://huggingface.co/Xenova/clip-vit-base-patch32) to
-reject likely shirt details and signs. Both run locally and do not require
-Python, Ollama, or a network connection after packaging.
+reject likely shirt details, signs, equipment labels, uniform patches, and
+clipped objects. Both run locally and do not require Python, Ollama, or a
+network connection after packaging.
 
 Pinned model file:
 
@@ -82,8 +83,9 @@ verify it and obtain any missing small files.
 2. Wait for the bundled local models to load automatically.
 3. Choose **Start batch**.
 4. Grounding DINO runs one period-delimited grounding prompt over each image.
-5. With **Enhanced torso rescue** enabled, the app detects people, searches
-   enlarged upper-torso crops, and uses CLIP to reject likely non-badges.
+5. With **Enhanced detection and filtering** enabled, the app uses CLIP to
+   reject only strongly negative lower-confidence full-image candidates, then
+   detects people and searches enlarged upper-torso crops for missed badges.
 6. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
 7. Review the centered image in the left-to-right carousel. Its immediate
@@ -193,7 +195,7 @@ applicable ORNL security and software-management review.
 
 - Human review is required.
 - Enhanced mode on the reviewed 18-image local regression currently measures
-  75.6% automatic badge recall and 72.3% mask precision. It is useful as a first-pass reviewer,
+  75.6% automatic badge recall and 81.0% mask precision. It is useful as a first-pass reviewer,
   not as an unattended compliance control. White/translucent cards and distant
   small badges remain the main miss cases.
 - Automatic detections begin with an angle-aware four-corner edge fit.
@@ -215,9 +217,9 @@ applicable ORNL security and software-management review.
 - The queued design avoids loading every full-resolution image at once, but a
   representative hundreds/thousands-image soak test is still required before
   production use.
-- Enhanced mode is substantially slower because it runs a person pass, one
-  badge pass per torso, and a classifier on rescue candidates. Turn it off for
-  the faster v0.9-style full-image pass.
+- Enhanced mode is substantially slower because it verifies ambiguous global
+  candidates, runs a person pass, one badge pass per torso, and a classifier
+  on rescue candidates. Turn it off for the faster v0.9-style full-image pass.
 - More detector workers are not guaranteed to scale linearly because each
   ONNX session competes for CPU and memory bandwidth. On the development
   workstation, two model workers were 1.04× faster than one on the four-image

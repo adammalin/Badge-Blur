@@ -16,18 +16,29 @@ import {
   redactImage,
 } from "./image-runtime.mjs";
 import {
+  CLASSIFIER_LABELS,
+  CLASSIFIER_MODEL_ID,
+  CLASSIFIER_POSITIVE_LABEL_COUNT,
   DEFAULT_FEATHER_PERCENT,
   DEFAULT_LABELS,
   DEFAULT_PADDING_PERCENT,
   DEFAULT_REDACTION_STYLE,
   DEFAULT_REDACTION_STRENGTH,
   DEFAULT_THRESHOLD,
+  GLOBAL_CLASSIFIER_LABELS,
+  GLOBAL_CLASSIFIER_MAX_SCORE,
+  GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
+  GLOBAL_CLASSIFIER_REJECT_MARGIN,
   MODEL_ID,
 } from "../src/detector-config.js";
 import {
   deduplicateBadgeDetections,
   filterBadgeDetections,
 } from "../src/detection-utils.js";
+import {
+  classifierEvidence,
+  globalClassifierDecision,
+} from "../src/classifier-utils.js";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const packageInfo = JSON.parse(
@@ -44,6 +55,7 @@ const skipRedaction = process.argv.includes("--skip-redaction");
 const thorough = process.argv.includes("--thorough");
 const personGuided = process.argv.includes("--person-guided");
 const torsoGuided = process.argv.includes("--torso-guided");
+const globalClassifier = process.argv.includes("--global-classifier");
 const colorAssisted = process.argv.includes("--color-assisted");
 const nameMatch = argumentValue("--match");
 const detectionThreshold = Number(
@@ -57,14 +69,13 @@ const cropThreshold = Number(argumentValue("--crop-threshold") || 0.5);
 const classifierMargin = Number(
   argumentValue("--classifier-margin") || 0.2,
 );
-const classifierModelId = "Xenova/clip-vit-base-patch32";
-const classifierLabels = [
-  "an employee identification badge hanging from a lanyard",
-  "a plastic photo ID card or conference name badge",
-  "a shirt logo or printed clothing",
-  "a pocket, button, zipper, or clothing detail",
-  "a wall sign, sheet of paper, or equipment label",
-];
+const globalClassifierMaxScore = Number(
+  argumentValue("--global-classifier-max-score") || GLOBAL_CLASSIFIER_MAX_SCORE,
+);
+const globalClassifierRejectMargin = Number(
+  argumentValue("--global-classifier-reject-margin") ||
+    GLOBAL_CLASSIFIER_REJECT_MARGIN,
+);
 const groundTruthPath = resolve(
   argumentValue("--ground-truth") ||
     resolve(projectRoot, "test-data/badge-ground-truth.json"),
@@ -110,11 +121,11 @@ const detector = await pipeline("zero-shot-object-detection", MODEL_ID, {
   device: "cpu",
 });
 let rescueClassifier = null;
-if (torsoGuided) {
-  console.log(`Loading local classifier ${classifierModelId}`);
+if (torsoGuided || globalClassifier) {
+  console.log(`Loading local classifier ${CLASSIFIER_MODEL_ID}`);
   rescueClassifier = await pipeline(
     "zero-shot-image-classification",
-    classifierModelId,
+    CLASSIFIER_MODEL_ID,
     {
       dtype: "q8",
       device: "cpu",
@@ -144,8 +155,15 @@ const report = {
   threshold: detectionThreshold,
   personThreshold,
   cropThreshold,
-  classifierModel: torsoGuided ? classifierModelId : null,
+  classifierModel: torsoGuided || globalClassifier ? CLASSIFIER_MODEL_ID : null,
   classifierMargin: torsoGuided ? classifierMargin : null,
+  globalClassifier,
+  globalClassifierMaxScore: globalClassifier
+    ? globalClassifierMaxScore
+    : null,
+  globalClassifierRejectMargin: globalClassifier
+    ? globalClassifierRejectMargin
+    : null,
   paddingPercent: DEFAULT_PADDING_PERCENT,
   redactionStyle: DEFAULT_REDACTION_STYLE,
   redactionStrength: DEFAULT_REDACTION_STRENGTH,
@@ -185,7 +203,24 @@ for (let index = 0; index < imageNames.length; index += 1) {
       `${index}-${resultIndex}`,
     ),
   );
-  const globalBoxes = filterBadgeDetections(candidates, decoded.info);
+  const unverifiedGlobalBoxes = filterBadgeDetections(candidates, decoded.info);
+  const globalClassification = globalClassifier
+    ? await classifyCandidates({
+        classifier: rescueClassifier,
+        source,
+        imageName,
+        width: decoded.info.width,
+        height: decoded.info.height,
+        boxes: unverifiedGlobalBoxes,
+        tileDirectory,
+        marginThreshold: globalClassifierRejectMargin,
+        maxScore: globalClassifierMaxScore,
+        cropPrefix: "global-classifier",
+        labels: GLOBAL_CLASSIFIER_LABELS,
+        positiveLabelCount: GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
+      })
+    : { retained: unverifiedGlobalBoxes, rejected: [] };
+  const globalBoxes = globalClassification.retained;
   const tileResults = torsoGuided
     ? await detectGroundingDinoTorsoCrops({
         detector,
@@ -275,7 +310,8 @@ for (let index = 0; index < imageNames.length; index += 1) {
       )
     : [];
   const classifiedTorsoBoxes = torsoGuided
-    ? await classifyTorsoCandidates({
+    ? (
+        await classifyCandidates({
         classifier: rescueClassifier,
         source,
         imageName,
@@ -284,7 +320,12 @@ for (let index = 0; index < imageNames.length; index += 1) {
         boxes: torsoModelBoxes,
         tileDirectory,
         marginThreshold: classifierMargin,
+        maxScore: 1,
+        cropPrefix: "torso-classifier",
+        labels: CLASSIFIER_LABELS,
+        positiveLabelCount: CLASSIFIER_POSITIVE_LABEL_COUNT,
       })
+      ).retained
     : [];
   const modelEvidenceBoxes = [
     ...globalBoxes,
@@ -430,6 +471,11 @@ for (let index = 0; index < imageNames.length; index += 1) {
     detectionPassCount: 1 + tileResults.passCount,
     tileRawDetectionCount: tileResults.rawDetectionCount,
     globalDetectionCount: globalBoxes.length,
+    unverifiedGlobalDetectionCount: unverifiedGlobalBoxes.length,
+    globalClassifierRejectedCount: globalClassification.rejected.length,
+    rejectedGlobalDetections: globalClassification.rejected.map(
+      serializeClassifierDetection,
+    ),
     tileDetectionCount: tileResults.boxes.length,
     colorDetectionCount: colorBoxes.length,
     filteredDetectionCount: boxes.length,
@@ -695,7 +741,7 @@ function mergeGlobalWithTorsoRescues(globalBoxes, torsoBoxes) {
   return [...retainedGlobal, ...rescues];
 }
 
-async function classifyTorsoCandidates({
+async function classifyCandidates({
   classifier,
   source,
   imageName,
@@ -704,14 +750,26 @@ async function classifyTorsoCandidates({
   boxes,
   tileDirectory,
   marginThreshold,
+  maxScore,
+  cropPrefix,
+  labels,
+  positiveLabelCount,
 }) {
   const retained = [];
+  const rejected = [];
   for (let index = 0; index < boxes.length; index += 1) {
     const box = boxes[index];
+    if (box.score > maxScore) {
+      retained.push({
+        ...box,
+        classifierDecision: "kept-high-confidence",
+      });
+      continue;
+    }
     const crop = paddedBoxCrop(box, width, height, 1.15);
     const cropPath = resolve(
       tileDirectory,
-      `${safeStem(imageName)}-classifier-${index + 1}.jpg`,
+      `${safeStem(imageName)}-${cropPrefix}-${index + 1}.jpg`,
     );
     await sharp(source)
       .rotate()
@@ -719,28 +777,34 @@ async function classifyTorsoCandidates({
       .resize({ width: 384, height: 384, fit: "cover" })
       .jpeg({ quality: 90 })
       .toFile(cropPath);
-    const classifications = await classifier(cropPath, classifierLabels);
-    const scores = Object.fromEntries(
-      classifications.map(({ label, score }) => [label, Number(score)]),
+    const classifications = await classifier(cropPath, labels);
+    const evidence = classifierEvidence(
+      classifications,
+      labels,
+      positiveLabelCount,
     );
-    const positiveScore = Math.max(
-      scores[classifierLabels[0]],
-      scores[classifierLabels[1]],
-    );
-    const negativeScore = Math.max(
-      ...classifierLabels.slice(2).map((label) => scores[label]),
-    );
-    const margin = positiveScore - negativeScore;
-    if (margin >= marginThreshold) {
-      retained.push({
-        ...box,
-        classifierPositiveScore: positiveScore,
-        classifierNegativeScore: negativeScore,
-        classifierMargin: margin,
-      });
-    }
+    const decision =
+      cropPrefix === "global-classifier"
+        ? globalClassifierDecision(
+            box.score,
+            evidence,
+            maxScore,
+            marginThreshold,
+          )
+        : evidence.margin >= marginThreshold
+          ? "kept-classified"
+          : "rejected-negative";
+    const classified = {
+      ...box,
+      classifierPositiveScore: evidence.positiveScore,
+      classifierNegativeScore: evidence.negativeScore,
+      classifierMargin: evidence.margin,
+      classifierTopLabel: evidence.topLabel,
+      classifierDecision: decision,
+    };
+    (decision === "rejected-negative" ? rejected : retained).push(classified);
   }
-  return retained;
+  return { retained, rejected };
 }
 
 function paddedBoxCrop(box, width, height, paddingFactor) {
@@ -1341,6 +1405,27 @@ function serializeMask(mask) {
     autoFitted: mask.autoFitted,
     fitConfidence: mask.fitConfidence,
     fitReason: mask.fitReason,
+    classifierPositiveScore: mask.classifierPositiveScore ?? null,
+    classifierNegativeScore: mask.classifierNegativeScore ?? null,
+    classifierMargin: mask.classifierMargin ?? null,
+    classifierTopLabel: mask.classifierTopLabel ?? null,
+    classifierDecision: mask.classifierDecision ?? null,
+  };
+}
+
+function serializeClassifierDetection(box) {
+  return {
+    x: Math.round(box.x),
+    y: Math.round(box.y),
+    width: Math.round(box.width),
+    height: Math.round(box.height),
+    label: box.label,
+    score: box.score,
+    classifierPositiveScore: box.classifierPositiveScore ?? null,
+    classifierNegativeScore: box.classifierNegativeScore ?? null,
+    classifierMargin: box.classifierMargin ?? null,
+    classifierTopLabel: box.classifierTopLabel ?? null,
+    classifierDecision: box.classifierDecision ?? null,
   };
 }
 

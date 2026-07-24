@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-23  
-Release: `0.10.0`  
+Release: `0.14.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX  
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`  
 Model SHA-256:
@@ -54,11 +54,12 @@ npm run test:badge-production
 | OWLv2 baseline | 14/45 | 14 | 9 | 31.1% | 60.9% |
 | 0.8.0 color-assisted | 20/45 | 20 | 8 | 44.4% | 71.4% |
 | 0.9.x Grounding DINO | 28/45 | 28 | 10 | 62.2% | 73.7% |
-| **0.10.0 enhanced torso + CLIP** | **34/45** | **34** | **13** | **75.6%** | **72.3%** |
+| 0.10.0–0.13.0 enhanced torso + CLIP | 34/45 | 34 | 13 | 75.6% | 72.3% |
+| **0.14.0 conservative global CLIP filter** | **34/45** | **34** | **8** | **75.6%** | **81.0%** |
 | Experimental person-guided | 28/45 | 27 | 19 | 62.2% | 58.7% |
 
 The final enhanced production report is stored locally under
-`test-output/evaluation-20260723-154425-e306e075/`. The v0.9 Grounding DINO
+`test-output/evaluation-20260724-091238-e2f74bb3/`. The v0.9 Grounding DINO
 report is under `test-output/evaluation-20260723-150039-0867c220/`.
 
 This test rejects unattended use: 11 reviewed badge points were still missed.
@@ -132,6 +133,19 @@ manual/high-memory qualification option.
 The complete 18-photo production-path regression was rerun after the worker
 changes and remained unchanged at 34/45 covered badge references (75.6%
 recall), 34 true-positive masks, 13 false-positive masks, and 72.3% precision.
+
+## Conservative negative-classifier validation
+
+Version 0.14.0 applies CLIP verification only to full-image Grounding DINO
+detections at or below 50% confidence. It rejects a candidate only when the
+strongest negative class leads the strongest badge class by more than 0.50.
+The negative set includes uniform patches and insignia, wall and equipment
+labels, clothing details, clipped tools, and lanyard hardware without a card.
+
+On the frozen local-photo set this rejected five false masks and no annotated
+badge, raising precision from 72.3% to 81.0% while recall remained 75.6%.
+Deterministic policy tests also confirm that high-confidence detections bypass
+the filter and borderline negative scores remain available for review.
 
 ## Bulk export validation boundary
 
