@@ -35,12 +35,6 @@ await sharp(sourcePath)
   .png({ compressionLevel: 9 })
   .toFile(publicIconPath);
 
-const iconsetRoot = await mkdtemp(
-  resolve(tmpdir(), "badge-blur-iconset-"),
-);
-const iconsetPath = resolve(iconsetRoot, "BadgeBlur.iconset");
-await mkdir(iconsetPath);
-
 const macIconSizes = [
   ["icon_16x16.png", 16],
   ["icon_16x16@2x.png", 32],
@@ -54,24 +48,32 @@ const macIconSizes = [
   ["icon_512x512@2x.png", 1024],
 ];
 
-try {
-  await Promise.all(
-    macIconSizes.map(([name, size]) =>
-      sharp(sourcePath)
-        .resize(size, size, { fit: "contain" })
-        .png({ compressionLevel: 9 })
-        .toFile(resolve(iconsetPath, name)),
-    ),
+if (process.platform === "darwin") {
+  const iconsetRoot = await mkdtemp(
+    resolve(tmpdir(), "badge-blur-iconset-"),
   );
-  execFileSync("/usr/bin/iconutil", [
-    "-c",
-    "icns",
-    iconsetPath,
-    "-o",
-    macIconPath,
-  ]);
-} finally {
-  await rm(iconsetRoot, { recursive: true, force: true });
+  const iconsetPath = resolve(iconsetRoot, "BadgeBlur.iconset");
+  await mkdir(iconsetPath);
+
+  try {
+    await Promise.all(
+      macIconSizes.map(([name, size]) =>
+        sharp(sourcePath)
+          .resize(size, size, { fit: "contain" })
+          .png({ compressionLevel: 9 })
+          .toFile(resolve(iconsetPath, name)),
+      ),
+    );
+    execFileSync("/usr/bin/iconutil", [
+      "-c",
+      "icns",
+      iconsetPath,
+      "-o",
+      macIconPath,
+    ]);
+  } finally {
+    await rm(iconsetRoot, { recursive: true, force: true });
+  }
 }
 
 const windowsSizes = [256, 128, 64, 48, 32, 16];
