@@ -29,6 +29,9 @@ jobs:
       - name: Install build dependencies
         run: npm ci --ignore-scripts
 
+      - name: Build macOS DMG helper
+        run: npm rebuild macos-alias
+
       - name: Download and verify local models
         run: npm run prepare
 
@@ -83,11 +86,11 @@ jobs:
         shell: bash
         run: npm run prepare
 
-      - name: Test local server lifecycle
-        run: npm run test:lifecycle
-
       - name: Build Electron Windows installer
         run: npm run package:windows:installer
+
+      - name: Test local server lifecycle
+        run: npm run test:lifecycle
 
       - name: Test packaged Electron runtime
         shell: powershell
