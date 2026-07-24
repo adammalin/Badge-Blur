@@ -36,8 +36,8 @@
   that do not retain folder permission ask the reviewer to reselect the same
   source folder before applying the cached review.
 - Adds deterministic 240×156 lazy-thumbnail generation coverage.
-- Keeps this release source-only for testing; no 0.20.0 installer artifacts
-  were built.
+- Ships verified Apple-silicon Mac ZIP/DMG and Windows x64 installer artifacts
+  with SHA-256 checksums through the tag-only release workflow.
 
 ## 0.19.0 — 2026-07-24
 

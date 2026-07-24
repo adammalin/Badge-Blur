@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-24
-Source version: `0.20.0`; latest packaged Electron release: `0.18.0`
+Source version: `0.20.0`; latest packaged Electron release: `0.20.0`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -155,8 +155,9 @@ cleared batch remains a recommended soak-test item before production use.
 
 ## Reviewer interface validation
 
-Version 0.20.0 remains source-only. A visible local-browser pass loaded the
-five synthetic images through the exact folder-input fallback and confirmed:
+Version 0.20.0 was qualified in the source build before its tagged Mac and
+Windows packaging workflow. A visible local-browser pass loaded the five
+synthetic images through the exact folder-input fallback and confirmed:
 
 - one large active reviewer replaces the earlier three-card rebuild;
 - all five images appear in a horizontally scrollable thumbnail filmstrip;

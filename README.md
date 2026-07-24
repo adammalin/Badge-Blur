@@ -201,19 +201,18 @@ software/model files. Image processing after setup is local.
 
 ## Installers and portable packages
 
-The latest interface, filmstrip, pause/resume, and crash-checkpoint work is
-currently available as the source-only `0.20.0` version. Per the current
-testing plan, no `0.19.0` or `0.20.0` installer artifacts were produced. The
-most recent installable Electron artifacts remain `0.18.0`; use the source
-instructions below to test the newer workflow.
+The latest interface, filmstrip, pause/resume, refresh recovery, and
+crash-checkpoint work is available in the `v0.20.0` GitHub release. That
+release includes the Apple-silicon Mac ZIP and DMG, a Windows x64 installer,
+and SHA-256 checksums. The source instructions remain available for testers
+whose managed computers cannot install unsigned applications.
 
 ### Install and test on macOS
 
 The current Mac package supports Apple-silicon Macs running macOS 13 or later.
-Use the newest `Badge-Blur-Mac-arm64-vX.Y.Z.dmg` from a successful
-[**Build installable apps**](https://github.com/adammalin/Badge-Blur/actions/workflows/build-installers.yml)
-GitHub Actions run. The matching ZIP still works, but the DMG is the preferred
-test package.
+Download `Badge-Blur-Mac-arm64-v0.20.0.dmg` from the
+[v0.20.0 release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.20.0).
+The matching ZIP also works, but the DMG is the preferred test package.
 
 1. Download the Mac artifact and unzip the GitHub artifact if necessary.
 2. Optional but recommended: place the DMG and its `.sha256` file together,
