@@ -1,5 +1,5 @@
-LOCAL BADGE REMOVER — WINDOWS OFFLINE MVP
-=========================================
+BADGE BLUR — WINDOWS OFFLINE MVP
+================================
 
 Compatibility
 -------------
@@ -10,8 +10,8 @@ an internet connection after the ZIP has been downloaded and unpacked.
 Start
 -----
 1. Right-click the ZIP and choose "Extract All". Do not run it inside the ZIP.
-2. Open the extracted "Local Badge Remover" folder.
-3. Double-click "Start Badge Remover.cmd".
+2. Open the extracted "Badge Blur" folder.
+3. Double-click "Start Badge Blur.cmd".
 4. Keep the Command Prompt window open while using the app.
 5. The app opens in Microsoft Edge.
 
@@ -63,7 +63,7 @@ TIFF because portable HEIC encoding is not included.
 Privacy
 -------
 Images stay on this PC. The app binds only to 127.0.0.1 (the local computer),
-contains its model and browser runtime, and has no analytics, accounts, cloud
+contains its model and private Node runtime, and has no analytics, accounts, cloud
 API, or remote model access.
 
 Limitations

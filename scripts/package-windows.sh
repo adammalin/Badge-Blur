@@ -10,15 +10,15 @@ NODE_SHA256="f8d162c0641dcee512132f3bcf8a68169c7ecb852efd8e1a46c9fec5a0f469ed"
 CACHE_DIR="$PROJECT_ROOT/.cache/windows-runtime"
 NODE_EXE="$CACHE_DIR/node-v${NODE_VERSION}-win-x64.exe"
 RELEASE_DIR="$PROJECT_ROOT/releases"
-PACKAGE_NAME="Local Badge Remover"
-ZIP_NAME="Local-Badge-Remover-Windows-x64-v${VERSION}.zip"
+PACKAGE_NAME="Badge Blur"
+ZIP_NAME="Badge-Blur-Windows-x64-v${VERSION}.zip"
 ZIP_PATH="$RELEASE_DIR/$ZIP_NAME"
 CHECKSUM_PATH="$ZIP_PATH.sha256"
-STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/badge-remover-windows.XXXXXX")"
+STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/badge-blur-windows.XXXXXX")"
 PACKAGE_ROOT="$STAGING_ROOT/$PACKAGE_NAME"
 
 cleanup() {
-  if [[ "$STAGING_ROOT" == *"/badge-remover-windows."* && -d "$STAGING_ROOT" ]]; then
+  if [[ "$STAGING_ROOT" == *"/badge-blur-windows."* && -d "$STAGING_ROOT" ]]; then
     /bin/rm -rf "$STAGING_ROOT"
   fi
 }
@@ -67,15 +67,17 @@ fi
   "$PACKAGE_ROOT/package.json"
 /bin/cp "$PROJECT_ROOT/packaging/package-lock.json" \
   "$PACKAGE_ROOT/package-lock.json"
-/bin/cp "$PROJECT_ROOT/packaging/Start Badge Remover.cmd" \
-  "$PACKAGE_ROOT/Start Badge Remover.cmd"
+/bin/cp "$PROJECT_ROOT/packaging/Start Badge Blur.cmd" \
+  "$PACKAGE_ROOT/Start Badge Blur.cmd"
+/bin/cp "$PROJECT_ROOT/packaging/assets/BadgeBlur.ico" \
+  "$PACKAGE_ROOT/BadgeBlur.ico"
 /bin/cp "$PROJECT_ROOT/packaging/README-Windows.txt" "$PACKAGE_ROOT/README.txt"
 /bin/cp "$PROJECT_ROOT/THIRD_PARTY_NOTICES.md" \
   "$PACKAGE_ROOT/THIRD_PARTY_NOTICES.md"
 
 # Use native Windows line endings for the files recipients open directly.
 /usr/bin/perl -pi -e 's/\r?\n/\r\n/g' \
-  "$PACKAGE_ROOT/Start Badge Remover.cmd" \
+  "$PACKAGE_ROOT/Start Badge Blur.cmd" \
   "$PACKAGE_ROOT/README.txt"
 
 (

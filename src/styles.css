@@ -99,8 +99,9 @@ h1 {
 }
 
 .title-icon {
-  width: auto;
+  width: clamp(2.9rem, 6vw, 5.5rem);
   height: clamp(2.9rem, 6vw, 5.5rem);
+  object-fit: contain;
   flex: none;
 }
 

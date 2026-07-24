@@ -9,7 +9,7 @@ START_PORT="${BADGE_REMOVER_PORT:-4173}"
 MAX_PORT=$((START_PORT + 20))
 
 if [[ "$(uname -m)" != "arm64" ]]; then
-  echo "Local Badge Remover requires an Apple-silicon Mac."
+  echo "Badge Blur requires an Apple-silicon Mac."
   echo
   read -k 1 "REPLY?Press any key to close."
   echo
@@ -51,7 +51,7 @@ while (( port <= MAX_PORT )); do
 
   if is_badge_remover "$url"; then
     open_app "$url"
-    echo "Local Badge Remover is already running at $url"
+    echo "Badge Blur is already running at $url"
     exit 0
   fi
 
@@ -97,7 +97,7 @@ for attempt in {1..100}; do
 done
 
 if (( ready == 0 )); then
-  echo "Local Badge Remover could not start."
+  echo "Badge Blur could not start."
   echo
   read -k 1 "REPLY?Press any key to close."
   echo
@@ -106,7 +106,7 @@ fi
 
 open_app "$url"
 echo
-echo "Local Badge Remover is running privately on this Mac:"
+echo "Badge Blur is running privately on this Mac:"
 echo "$url"
 echo
 echo "Keep this Terminal window open while using the app."

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.15.0 — 2026-07-24
+
+- Renames the user-facing product from Badge Remover to **Badge Blur** while
+  preserving existing run-folder, manifest, and internal compatibility names.
+- Replaces the ORNL leaf in the web header with the supplied badge-blur
+  artwork and uses the same deterministic source for the favicon.
+- Adds generated multi-resolution `BadgeBlur.icns` and `BadgeBlur.ico` assets
+  so the macOS bundle has a Finder/Dock icon and a future Windows shortcut or
+  installer can use the matching system icon.
+- Renames the Mac app bundle, Windows launcher, package folders, and release
+  archives to Badge Blur.
+- Keeps the supplied raster artwork unchanged except for deterministic
+  platform-required resizing and encoding.
+
 ## 0.14.0 — 2026-07-24
 
 - Adds a conservative CLIP verification pass for lower-confidence full-image

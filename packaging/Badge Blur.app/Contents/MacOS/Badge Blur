@@ -8,15 +8,15 @@ RUNTIME_NODE="$PACKAGE_ROOT/runtime/node"
 SERVER_SCRIPT="$PACKAGE_ROOT/scripts/serve.mjs"
 START_PORT="${BADGE_REMOVER_PORT:-4173}"
 MAX_PORT=$((START_PORT + 20))
-LOG_FILE="${TMPDIR:-/tmp}/local-badge-remover.log"
+LOG_FILE="${TMPDIR:-/tmp}/badge-blur.log"
 
 show_error() {
   /usr/bin/osascript -e \
-    "display dialog \"$1\" with title \"Badge Remover\" buttons {\"OK\"} default button \"OK\" with icon stop"
+    "display dialog \"$1\" with title \"Badge Blur\" buttons {\"OK\"} default button \"OK\" with icon stop"
 }
 
 if [[ ! -x "$RUNTIME_NODE" || ! -f "$SERVER_SCRIPT" ]]; then
-  show_error "Badge Remover.app is incomplete. Download and unzip a fresh copy."
+  show_error "Badge Blur.app is incomplete. Download and unzip a fresh copy."
   exit 1
 fi
 
@@ -26,7 +26,7 @@ PACKAGE_VERSION="$(
     "$PACKAGE_ROOT/package.json"
 )"
 
-is_badge_remover() {
+is_badge_blur() {
   /usr/bin/curl --silent --fail --max-time 1 "${1}api/status" 2>/dev/null |
     /usr/bin/grep --quiet "\"appVersion\":\"${PACKAGE_VERSION}\""
 }
@@ -45,7 +45,7 @@ port="$START_PORT"
 while (( port <= MAX_PORT )); do
   url="http://127.0.0.1:${port}/"
 
-  if is_badge_remover "$url"; then
+  if is_badge_blur "$url"; then
     open_browser "$url"
     exit 0
   fi
@@ -58,7 +58,7 @@ while (( port <= MAX_PORT )); do
 done
 
 if (( port > MAX_PORT )); then
-  show_error "Badge Remover could not find an available local port."
+  show_error "Badge Blur could not find an available local port."
   exit 1
 fi
 
@@ -76,7 +76,7 @@ trap cleanup EXIT INT TERM HUP
 
 ready=0
 for attempt in {1..100}; do
-  if is_badge_remover "$url"; then
+  if is_badge_blur "$url"; then
     ready=1
     break
   fi
@@ -89,7 +89,7 @@ for attempt in {1..100}; do
 done
 
 if (( ready == 0 )) && ! kill -0 "$server_pid" 2>/dev/null; then
-  show_error "Badge Remover could not start. Diagnostic details were saved to $LOG_FILE."
+  show_error "Badge Blur could not start. Diagnostic details were saved to $LOG_FILE."
   exit 1
 fi
 

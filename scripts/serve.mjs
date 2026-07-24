@@ -142,7 +142,7 @@ if (!existsSync(root)) {
     const address = server.address();
     const activePort = typeof address === "object" && address ? address.port : port;
     const url = `http://${host}:${activePort}/`;
-    console.log(`Local Badge Remover: ${url}`);
+    console.log(`Badge Blur: ${url}`);
 
     if (process.env.BADGE_REMOVER_OPEN_BROWSER === "1") {
       openBrowser(url);

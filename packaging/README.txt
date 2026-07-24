@@ -1,5 +1,5 @@
-LOCAL BADGE REMOVER — OFFLINE MVP
-=================================
+BADGE BLUR — OFFLINE MVP
+========================
 
 Compatibility
 -------------
@@ -9,14 +9,14 @@ connection after the ZIP has been downloaded and unpacked.
 
 Start
 -----
-1. Unzip the package. Badge Remover.app contains its complete private runtime;
+1. Unzip the package. Badge Blur.app contains its complete private runtime;
    the adjacent demo folder and README can remain where they are.
-2. Double-click "Badge Remover.app".
+2. Double-click "Badge Blur.app".
 3. The app opens in Google Chrome or Microsoft Edge when installed. No
    Terminal window is required.
 
 This test build is not Developer ID signed or Apple notarized. If macOS blocks
-the first launch, right-click "Badge Remover.app", choose Open, then choose
+the first launch, right-click "Badge Blur.app", choose Open, then choose
 Open once more. On a managed Mac, follow organizational policy or contact
 support instead of bypassing a block. A fully warning-free tester build must
 be signed and notarized by ORNL or an Apple Developer account.
@@ -64,7 +64,7 @@ TIFF because portable HEIC encoding is not included.
 Privacy
 -------
 Images stay on this Mac. The app binds only to 127.0.0.1 (the local computer),
-contains its model and browser runtime, and has no analytics, accounts, cloud
+contains its model and private Node runtime, and has no analytics, accounts, cloud
 API, or remote model access.
 
 Limitations
@@ -81,7 +81,7 @@ Limitations
 
 Stop
 ----
-Quit Badge Remover from the Dock or Activity Monitor. Closing only the browser
+Quit Badge Blur from the Dock or Activity Monitor. Closing only the browser
 tab leaves the local app available so it can be reopened quickly.
 
 Test images

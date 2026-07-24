@@ -7,17 +7,17 @@ VERSION="$(node -p "require('$PROJECT_ROOT/package.json').version")"
 ARCH="$(uname -m)"
 NODE_BIN="${PORTABLE_NODE_BIN:-$(command -v node)}"
 RELEASE_DIR="$PROJECT_ROOT/releases"
-PACKAGE_NAME="Local Badge Remover"
-ZIP_NAME="Local-Badge-Remover-Mac-arm64-v${VERSION}.zip"
+PACKAGE_NAME="Badge Blur"
+ZIP_NAME="Badge-Blur-Mac-arm64-v${VERSION}.zip"
 ZIP_PATH="$RELEASE_DIR/$ZIP_NAME"
 CHECKSUM_PATH="$ZIP_PATH.sha256"
-STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/badge-remover-package.XXXXXX")"
+STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/badge-blur-package.XXXXXX")"
 PACKAGE_ROOT="$STAGING_ROOT/$PACKAGE_NAME"
-APP_ROOT="$PACKAGE_ROOT/Badge Remover.app"
+APP_ROOT="$PACKAGE_ROOT/Badge Blur.app"
 APP_RESOURCES="$APP_ROOT/Contents/Resources"
 
 cleanup() {
-  if [[ "$STAGING_ROOT" == *"/badge-remover-package."* && -d "$STAGING_ROOT" ]]; then
+  if [[ "$STAGING_ROOT" == *"/badge-blur-package."* && -d "$STAGING_ROOT" ]]; then
     /bin/rm -rf "$STAGING_ROOT"
   fi
 }
@@ -48,7 +48,7 @@ fi
   "$APP_RESOURCES/scripts" \
   "$RELEASE_DIR"
 
-/usr/bin/ditto "$PROJECT_ROOT/packaging/Badge Remover.app" "$APP_ROOT"
+/usr/bin/ditto "$PROJECT_ROOT/packaging/Badge Blur.app" "$APP_ROOT"
 /bin/mkdir -p \
   "$APP_RESOURCES/runtime" \
   "$APP_RESOURCES/scripts"
@@ -68,14 +68,14 @@ fi
 
 /bin/chmod 755 \
   "$APP_RESOURCES/runtime/node" \
-  "$PACKAGE_ROOT/Badge Remover.app/Contents/MacOS/Badge Remover"
+  "$PACKAGE_ROOT/Badge Blur.app/Contents/MacOS/Badge Blur"
 
 /usr/libexec/PlistBuddy -c \
   "Set :CFBundleShortVersionString $VERSION" \
-  "$PACKAGE_ROOT/Badge Remover.app/Contents/Info.plist"
+  "$PACKAGE_ROOT/Badge Blur.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c \
   "Set :CFBundleVersion ${VERSION#0.}" \
-  "$PACKAGE_ROOT/Badge Remover.app/Contents/Info.plist"
+  "$PACKAGE_ROOT/Badge Blur.app/Contents/Info.plist"
 
 (
   cd "$APP_RESOURCES"
@@ -86,9 +86,9 @@ fi
 # Public distribution without a Gatekeeper warning still requires a real
 # Developer ID signature and Apple notarization.
 /usr/bin/codesign --force --deep --sign - \
-  "$PACKAGE_ROOT/Badge Remover.app"
+  "$PACKAGE_ROOT/Badge Blur.app"
 /usr/bin/codesign --verify --deep --strict \
-  "$PACKAGE_ROOT/Badge Remover.app"
+  "$PACKAGE_ROOT/Badge Blur.app"
 
 if [[ -e "$ZIP_PATH" || -e "$CHECKSUM_PATH" ]]; then
   echo "Release already exists. Move it aside or increment the version:" >&2

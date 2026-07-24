@@ -1,4 +1,4 @@
-# Local Badge Remover MVP
+# Badge Blur MVP
 
 A local-only browser tool that detects likely identification badges, lets a
 reviewer correct the masks, and saves redacted copies without changing the
@@ -180,8 +180,8 @@ Each ZIP and SHA-256 checksum is written to `releases/`. Both packages contain
 the same built app, model, and five synthetic demo images. The platform bundle
 adds only its matching launcher and official Node runtime:
 
-- macOS Apple silicon: `Badge Remover.app`
-- Windows x64: `Start Badge Remover.cmd`
+- macOS Apple silicon: `Badge Blur.app`
+- Windows x64: `Start Badge Blur.cmd`
 
 Recipients do not need Ollama, Python, Node.js, npm, or an internet connection.
 The Mac app has an ad-hoc integrity signature, but it is not Developer ID

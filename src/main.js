@@ -34,7 +34,7 @@ import {
 } from "./worker-policy.js";
 import { runWorkerPool } from "./worker-pool.js";
 
-const APP_VERSION = "0.14.0";
+const APP_VERSION = "0.15.0";
 const IMAGE_API_VERSION = 4;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -198,8 +198,8 @@ async function verifyLocalServer() {
     serverReady = false;
     setModelStatus("error", "Restart required");
     showProgress(
-      "This page is connected to an older Badge Remover server. Close old " +
-        "Badge Remover Terminal windows, start this version again, and reload.",
+      "This page is connected to an older Badge Blur server. Close old " +
+        "Badge Blur windows, start this version again, and reload.",
       0,
     );
     updateButtons();
@@ -317,7 +317,7 @@ async function importPreviousRun(event) {
   try {
     const manifest = JSON.parse(await file.text());
     if (!manifest || !Array.isArray(manifest.files)) {
-      throw new Error("This is not a Badge Remover run manifest.");
+      throw new Error("This is not a Badge Blur run manifest.");
     }
     importedManifest = manifest;
     restoreRunSettings(manifest);
@@ -2223,7 +2223,7 @@ async function localJsonRequest(path, file, options) {
     if (response.status === 404) {
       throw new Error(
         "The local image-processing server is an older version. Close old " +
-          "Badge Remover Terminal windows and restart this app.",
+          "Badge Blur windows and restart this app.",
       );
     }
     throw new Error(
