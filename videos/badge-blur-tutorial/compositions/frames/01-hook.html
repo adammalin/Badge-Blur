@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:#373a36;color:#fff;font-family:Inter,sans-serif}
+  .glow{position:absolute;width:900px;height:900px;right:-140px;top:-180px;border-radius:50%;background:radial-gradient(circle,rgba(112,185,75,.28),rgba(112,185,75,0) 68%)}
+  .copy{position:absolute;left:112px;top:116px;width:760px;z-index:3}.eyebrow{color:#70b94b;font-size:24px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+  h1{font-size:104px;line-height:.94;letter-spacing:-.055em;margin:30px 0 26px;max-width:760px}.sub{font-size:31px;line-height:1.35;color:#cbd5cf;max-width:620px}
+  .media{position:absolute;left:900px;right:90px;top:94px;bottom:94px;border-radius:30px;overflow:hidden;border:3px solid #70b94b;background:#27302c;box-shadow:0 34px 90px rgba(0,0,0,.42)}
+  .half{position:absolute;inset:0;width:50%;height:100%;object-fit:cover}.after{left:50%;object-position:50% 50%}.divider{position:absolute;left:50%;top:0;bottom:0;width:5px;background:#70b94b}
+  .tag{position:absolute;top:24px;padding:12px 18px;border-radius:999px;background:rgba(7,91,56,.93);font-size:20px;font-weight:800}.before-tag{left:24px}.after-tag{left:calc(50% + 24px)}
+  .trust{position:absolute;left:112px;bottom:90px;display:flex;gap:16px}.pill{padding:13px 19px;border:2px solid #cbd5cf;border-radius:999px;font-size:20px;font-weight:750}
+  .subtitle{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:6;max-width:1280px;padding:14px 24px;border-radius:15px;background:rgba(20,27,24,.9);font-size:25px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-yye0" id="root" data-composition-id="frame-01" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-2s7n" class="glow"></div>
+  <div data-hf-id="hf-bdx3" class="copy"><div data-hf-id="hf-s0m5" class="eyebrow">Badge Blur</div><h1 data-hf-id="hf-j8av">Blur badges.<br data-hf-id="hf-x5px">Keep the photo.</h1><div data-hf-id="hf-mbru" class="sub">A local review workflow for private, export-ready copies.</div></div>
+  <div data-hf-id="hf-v3x0" class="media"><img data-hf-id="hf-ck3d" class="half" src="assets/images/source/01-single-frontal-badge.png"><img data-hf-id="hf-l80o" class="half after" src="assets/images/exported/01-single-frontal-badge-redacted.jpg"><div data-hf-id="hf-jk23" class="divider"></div><div data-hf-id="hf-4d5t" class="tag before-tag">Before</div><div data-hf-id="hf-b7mt" class="tag after-tag">After</div></div>
+  <div data-hf-id="hf-7qi6" class="trust"><span data-hf-id="hf-kfny" class="pill">Local processing</span><span data-hf-id="hf-nf4r" class="pill">Originals untouched</span></div>
+  <div data-hf-id="hf-woka" class="subtitle">Find likely badges, refine each mask, and export private copies.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".copy",{x:-80,opacity:0},{x:0,opacity:1,duration:1,ease:"power3.out"},0.2)
+    .fromTo(".media",{x:120,scale:.94,opacity:0},{x:0,scale:1,opacity:1,duration:1.1,ease:"power3.out"},0.35)
+    .fromTo(".divider",{scaleY:0},{scaleY:1,duration:.7,ease:"power2.out",transformOrigin:"center top"},1.05)
+    .fromTo(".tag",{y:-18,opacity:0},{y:0,opacity:1,duration:.55,stagger:.12,ease:"back.out(1.5)"},1.25)
+    .fromTo(".trust .pill",{y:20,opacity:0},{y:0,opacity:1,duration:.55,stagger:.12,ease:"power2.out"},1.55)
+    .fromTo(".subtitle",{y:22,opacity:0},{y:0,opacity:1,duration:.55,ease:"power2.out"},.7)
+    .to(".glow",{scale:1.08,opacity:.78,duration:7,ease:"sine.inOut"},.3);
+  window.__timelines["frame-01"]=tl;
+</script>
+</template></body></html>

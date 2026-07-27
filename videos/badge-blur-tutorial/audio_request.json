@@ -1,0 +1,60 @@
+{
+  "provider": "kokoro",
+  "voice": "am_adam",
+  "lang": "en",
+  "speed": 0.95,
+  "lines": [
+    {
+      "id": "01",
+      "text": "Badge Blur finds identification badges, lets you refine every mask, and exports private copies without changing the originals.",
+      "sfx": ["whoosh-short"]
+    },
+    {
+      "id": "02",
+      "text": "On a Mac, open Terminal and run the two commands from the project readme. The script creates an isolated source-test copy, verifies its dependencies, and opens the app.",
+      "sfx": ["typing"]
+    },
+    {
+      "id": "03",
+      "text": "Choose the folder of photos, then select the output format for this batch. Match source is the default, or choose JPEG, PNG, TIFF, or WebP. Exports stay in a new nested folder.",
+      "sfx": ["click-soft"]
+    },
+    {
+      "id": "04",
+      "text": "Select Start batch. Detection and redaction run locally, and completed previews are prepared while the remaining photos continue processing.",
+      "sfx": ["click-soft"]
+    },
+    {
+      "id": "05",
+      "text": "Review each photo in the large viewer. Fit shows the whole frame; Fill width gives you more inspection detail. Zoom with Command-scroll, hold Space to pan, and switch between Before and After.",
+      "sfx": ["whoosh-short"]
+    },
+    {
+      "id": "06",
+      "text": "If a badge was missed, drag across it to add a mask. Select a mask to move its corner handles, remove a false detection, or adjust blur for that badge alone. The After view refreshes with your latest edit.",
+      "sfx": ["click-soft"]
+    },
+    {
+      "id": "07",
+      "text": "Choose Save, review and next. Badge Blur saves the current masks, marks exactly this photo reviewed, and advances to the next image that still needs you.",
+      "sfx": ["chime"]
+    },
+    {
+      "id": "08",
+      "text": "After an adjustment, re-export that image, or export only photos changed since the last export. When the batch is ready, open the export folder to see the redacted files and run data.",
+      "sfx": ["chime"]
+    },
+    {
+      "id": "09",
+      "text": "Automatic detection gets you moving quickly. Your review makes the result trustworthy. Badge Blur keeps the whole workflow local and leaves every original untouched.",
+      "sfx": ["chime"]
+    }
+  ],
+  "bgm": {
+    "mode": "generate",
+    "query": "soft calm unobtrusive instrumental technology tutorial, no vocals",
+    "prompt": "soft warm ambient technology tutorial underscore, 82 BPM, gentle electric piano, airy synth pads, subtle muted pulse, no vocals, no dramatic drums, calm and reassuring, seamless background music",
+    "archetype": "demo-loop",
+    "arc": "trust and reassurance"
+  }
+}

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:#373a36;color:#fff;font-family:Inter,sans-serif}
+  .glow{position:absolute;width:1300px;height:1000px;left:310px;top:30px;border-radius:50%;background:radial-gradient(circle,rgba(112,185,75,.25),rgba(112,185,75,0) 70%)}
+  .gallery{position:absolute;inset:84px 80px 98px;display:grid;grid-template-columns:repeat(5,1fr);gap:18px;opacity:.3}.gallery img{width:100%;height:100%;object-fit:cover;border-radius:20px;filter:saturate(.7)}
+  .veil{position:absolute;inset:0;background:rgba(39,48,44,.64)}
+  .center{position:absolute;inset:0;display:grid;place-items:center;text-align:center}.lockup{max-width:1220px}.icon{width:138px;height:138px;border-radius:28px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  h1{font-size:94px;line-height:1;letter-spacing:-.05em;margin:28px 0 18px}.sub{font-size:31px;color:#cbd5cf;line-height:1.35}
+  .steps{display:flex;justify-content:center;gap:16px;margin-top:42px}.step{padding:14px 20px;border:2px solid #cbd5cf;border-radius:999px;font-size:21px;font-weight:850}.step.active{background:#075b38;border-color:#70b94b}
+  .brand{margin-top:52px;font-size:36px;font-weight:900;letter-spacing:-.02em}.brand span{color:#70b94b}
+  .subtitle{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:7;width:1450px;padding:13px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:24px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-umsw" id="root" data-composition-id="frame-09" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-2s7n" class="glow"></div><div data-hf-id="hf-oh2i" class="gallery"><img data-hf-id="hf-iuxa" src="assets/images/exported/01-single-frontal-badge-redacted.jpg"><img data-hf-id="hf-7rwk" src="assets/images/exported/02-two-person-event-badges-redacted.jpg"><img data-hf-id="hf-y6mi" src="assets/images/exported/03-four-person-group-badges-redacted.jpg"><img data-hf-id="hf-xe6f" src="assets/images/exported/04-outdoor-glare-motion-badge-redacted.jpg"><img data-hf-id="hf-3gmr" src="assets/images/exported/05-low-light-multiscale-badges-redacted.jpg"></div><div data-hf-id="hf-h5f4" class="veil"></div>
+  <div data-hf-id="hf-0oij" class="center"><div data-hf-id="hf-6jvi" class="lockup"><img data-hf-id="hf-twgv" class="icon" src="assets/images/badge-blur.png"><h1 data-hf-id="hf-aykl">Review stays human.</h1><div data-hf-id="hf-8i7g" class="sub">Detection gets you moving.<br data-hf-id="hf-x5px">Your judgment makes the result trustworthy.</div><div data-hf-id="hf-70xd" class="steps"><span data-hf-id="hf-299c" class="step active">Detect locally</span><span data-hf-id="hf-hy2a" class="step">Review visually</span><span data-hf-id="hf-u322" class="step">Export confidently</span></div><div data-hf-id="hf-scp2" class="brand">Badge <span data-hf-id="hf-172s">Blur</span></div></div></div>
+  <div data-hf-id="hf-59xs" class="subtitle">The workflow stays local, and every original remains untouched.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".gallery",{scale:1.1,opacity:0},{scale:1,opacity:.3,duration:1.2,ease:"power2.out"},.1)
+    .fromTo(".icon",{scale:.45,rotation:-8,opacity:0},{scale:1,rotation:0,opacity:1,duration:.8,ease:"back.out(1.8)"},.45)
+    .fromTo("h1,.sub",{y:38,opacity:0},{y:0,opacity:1,duration:.65,stagger:.16,ease:"power3.out"},.8)
+    .fromTo(".step",{y:26,opacity:0},{y:0,opacity:1,duration:.5,stagger:.18,ease:"back.out(1.4)"},1.7)
+    .fromTo(".brand",{scale:.8,opacity:0},{scale:1,opacity:1,duration:.65,ease:"power2.out"},2.6)
+    .fromTo(".subtitle",{y:20,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.7)
+    .to(".glow",{scale:1.1,opacity:.7,duration:8,ease:"sine.inOut"},.3);
+  window.__timelines["frame-09"]=tl;
+</script>
+</template></body></html>

@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-07-27T19:41:43.966Z",
+  "enabled": true,
+  "provider": "musicgen",
+  "mode": "detached-seed-loop",
+  "path": "assets/bgm/track.wav",
+  "log": "/Users/ia2/Documents/Custom Badge Remover Tool/videos/badge-blur-tutorial/assets/bgm/bgm-1785181083842.log",
+  "pid": 74139,
+  "target_duration_s": 91.562,
+  "seed_duration_s": 28,
+  "loop_count": 4,
+  "timeout_ms": 120000,
+  "status": "ready",
+  "ready": true,
+  "waited_ms": 112072,
+  "size_bytes": 5860012,
+  "message": "BGM ready at assets/bgm/track.wav."
+}

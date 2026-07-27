@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:transparent;color:#fff;font-family:Inter,sans-serif}
+  .chapter{position:absolute;left:86px;top:45px;z-index:5;padding:12px 18px;border-radius:999px;background:#075b38;font-size:21px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+  .window{position:absolute;left:64px;right:64px;top:98px;bottom:94px;border:3px solid #70b94b;border-radius:28px;overflow:hidden;background:transparent;box-shadow:0 30px 85px rgba(0,0,0,.5)}
+  .chips{position:absolute;left:50%;top:112px;transform:translateX(-50%);z-index:4;display:flex;gap:15px}.chip{padding:13px 19px;border-radius:999px;background:#075b38;font-size:20px;font-weight:850}
+  .subtitle{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:6;width:1400px;padding:13px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:24px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-txin" id="root" data-composition-id="frame-04" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-85c8" class="chapter">3 · Process</div>
+  <div data-hf-id="hf-6r44" class="window"></div>
+  <div data-hf-id="hf-exrd" class="chips"><span data-hf-id="hf-l1p2" class="chip">Local</span><span data-hf-id="hf-g9qc" class="chip">2 workers</span><span data-hf-id="hf-d7h2" class="chip">Preview prepared</span></div>
+  <div data-hf-id="hf-tyjr" class="subtitle">Start the batch. Processing continues while completed images become ready to review.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl
+    .fromTo(".chapter",{x:-25,opacity:0},{x:0,opacity:1,duration:.5,ease:"power2.out"},.3)
+    .fromTo(".chip",{y:-24,opacity:0},{y:0,opacity:1,duration:.45,stagger:.18,ease:"back.out(1.5)"},1.2)
+    .fromTo(".subtitle",{y:20,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.55);
+  tl.fromTo(".window", { scale: 0.94 }, { scale: 1, duration: 0.75, ease: "power3.out" }, 0.1);
+  tl.fromTo(".window", { opacity: 0 }, { opacity: 1, duration: 0.75, ease: "power3.out" }, 0.1);
+  window.__timelines["frame-04"]=tl;
+</script>
+</template></body></html>

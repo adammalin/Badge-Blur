@@ -1,8 +1,24 @@
 # Badge Blur
 
+<p align="center">
+  <img src="public/badge-blur.png" alt="Badge Blur app icon" width="180">
+</p>
+
 A local-only Electron desktop application that detects likely identification
 badges, lets a reviewer correct the masks, and saves redacted copies without
 changing the original images.
+
+## Video tutorial and Mac quick start
+
+- [Watch or download the 1 minute 43 second tutorial video](https://github.com/adammalin/Badge-Blur/releases/download/v0.22.1/Badge-Blur-macOS-Tutorial.mp4)
+- [Download the selectable-text macOS installation flyer](output/pdf/Badge-Blur-macOS-Quick-Start.pdf)
+- [Browse the editable HyperFrames tutorial source](videos/badge-blur-tutorial)
+- [Download the complete source bundle and original 4K captures from the v0.22.1 Release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.22.1)
+
+The finished video and multipart full-source archive are hosted as GitHub
+Release assets so normal repository clones stay reasonably small. The editable
+composition, narration, music, sound effects, processed footage, images, and
+PDF generator remain in the repository.
 
 ## Start the app
 

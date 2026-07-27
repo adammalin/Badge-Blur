@@ -1,0 +1,34 @@
+{"id":"video_001","type":"video","path":"assets/captures/01-import-and-start.mov","source":"existing","description":"01 import and start","provenance":{"provider":"local","adopted":true}}
+{"id":"video_002","type":"video","path":"assets/captures/02-live-mask-correction.mov","source":"existing","description":"02 live mask correction","provenance":{"provider":"local","adopted":true}}
+{"id":"video_003","type":"video","path":"assets/captures/03-review-and-export.mov","source":"existing","description":"03 review and export","provenance":{"provider":"local","adopted":true}}
+{"id":"video_004","type":"video","path":"assets/captures/04-finish-and-export.mov","source":"existing","description":"04 finish and export","provenance":{"provider":"local","adopted":true}}
+{"id":"video_006","type":"video","path":"assets/footage/confirm-flow.mp4","source":"existing","description":"confirm flow","provenance":{"provider":"local","adopted":true}}
+{"id":"video_007","type":"video","path":"assets/footage/correct-flow.mp4","source":"existing","description":"correct flow","provenance":{"provider":"local","adopted":true}}
+{"id":"video_008","type":"video","path":"assets/footage/export-flow.mp4","source":"existing","description":"export flow","provenance":{"provider":"local","adopted":true}}
+{"id":"video_009","type":"video","path":"assets/footage/import-flow.mp4","source":"existing","description":"import flow","provenance":{"provider":"local","adopted":true}}
+{"id":"video_010","type":"video","path":"assets/footage/inspect-flow.mp4","source":"existing","description":"inspect flow","provenance":{"provider":"local","adopted":true}}
+{"id":"video_011","type":"video","path":"assets/footage/process-flow.mp4","source":"existing","description":"process flow","provenance":{"provider":"local","adopted":true}}
+{"id":"image_001","type":"image","path":"assets/images/badge-blur.png","source":"existing","description":"badge blur","provenance":{"provider":"local","adopted":true}}
+{"id":"image_002","type":"image","path":"assets/images/exported/01-single-frontal-badge-redacted.jpg","source":"existing","description":"01 single frontal badge redacted","provenance":{"provider":"local","adopted":true}}
+{"id":"image_003","type":"image","path":"assets/images/exported/02-two-person-event-badges-redacted.jpg","source":"existing","description":"02 two person event badges redacted","provenance":{"provider":"local","adopted":true}}
+{"id":"image_004","type":"image","path":"assets/images/exported/03-four-person-group-badges-redacted.jpg","source":"existing","description":"03 four person group badges redacted","provenance":{"provider":"local","adopted":true}}
+{"id":"image_005","type":"image","path":"assets/images/exported/04-outdoor-glare-motion-badge-redacted.jpg","source":"existing","description":"04 outdoor glare motion badge redacted","provenance":{"provider":"local","adopted":true}}
+{"id":"image_006","type":"image","path":"assets/images/exported/05-low-light-multiscale-badges-redacted.jpg","source":"existing","description":"05 low light multiscale badges redacted","provenance":{"provider":"local","adopted":true}}
+{"id":"image_007","type":"image","path":"assets/images/source/01-single-frontal-badge.png","source":"existing","description":"01 single frontal badge","provenance":{"provider":"local","adopted":true}}
+{"id":"image_008","type":"image","path":"assets/images/source/02-two-person-event-badges.png","source":"existing","description":"02 two person event badges","provenance":{"provider":"local","adopted":true}}
+{"id":"image_009","type":"image","path":"assets/images/source/03-four-person-group-badges.png","source":"existing","description":"03 four person group badges","provenance":{"provider":"local","adopted":true}}
+{"id":"image_010","type":"image","path":"assets/images/source/04-outdoor-glare-motion-badge.png","source":"existing","description":"04 outdoor glare motion badge","provenance":{"provider":"local","adopted":true}}
+{"id":"image_011","type":"image","path":"assets/images/source/05-low-light-multiscale-badges.png","source":"existing","description":"05 low light multiscale badges","provenance":{"provider":"local","adopted":true}}
+{"id":"sfx_001","type":"sfx","path":"assets/sfx/chime.mp3","source":"existing","description":"chime","provenance":{"provider":"local","adopted":true}}
+{"id":"sfx_002","type":"sfx","path":"assets/sfx/click-soft.mp3","source":"existing","description":"click soft","provenance":{"provider":"local","adopted":true}}
+{"id":"sfx_003","type":"sfx","path":"assets/sfx/typing.mp3","source":"existing","description":"typing","provenance":{"provider":"local","adopted":true}}
+{"id":"sfx_004","type":"sfx","path":"assets/sfx/whoosh-short.mp3","source":"existing","description":"whoosh short","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_001","type":"voice","path":"assets/voice/01.wav","source":"existing","description":"01","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_002","type":"voice","path":"assets/voice/02.wav","source":"existing","description":"02","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_003","type":"voice","path":"assets/voice/03.wav","source":"existing","description":"03","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_004","type":"voice","path":"assets/voice/04.wav","source":"existing","description":"04","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_005","type":"voice","path":"assets/voice/05.wav","source":"existing","description":"05","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_006","type":"voice","path":"assets/voice/06.wav","source":"existing","description":"06","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_007","type":"voice","path":"assets/voice/07.wav","source":"existing","description":"07","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_008","type":"voice","path":"assets/voice/08.wav","source":"existing","description":"08","provenance":{"provider":"local","adopted":true}}
+{"id":"voice_009","type":"voice","path":"assets/voice/09.wav","source":"existing","description":"09","provenance":{"provider":"local","adopted":true}}

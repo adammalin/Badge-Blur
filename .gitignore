@@ -11,3 +11,9 @@ test-data/local-badge-evaluation/
 test-output/
 .DS_Store
 badge-remover-output/
+tmp/
+videos/*/.hyperframes/
+videos/*/.thumbnails/
+videos/*/snapshots/
+videos/*/assets/captures/
+videos/*/assets/bgm/*.log

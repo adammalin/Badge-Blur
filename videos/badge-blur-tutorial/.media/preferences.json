@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "preferences": {
+    "destination": {
+      "value": "internal-training-video",
+      "confirmed_in": [
+        "badge-blur-tutorial"
+      ],
+      "updated_at": "2026-07-27T19:14:28.759Z"
+    },
+    "aspect": {
+      "value": "1920x1080",
+      "confirmed_in": [
+        "badge-blur-tutorial"
+      ],
+      "updated_at": "2026-07-27T19:14:28.833Z"
+    },
+    "language": {
+      "value": "en",
+      "confirmed_in": [
+        "badge-blur-tutorial"
+      ],
+      "updated_at": "2026-07-27T19:14:28.903Z"
+    },
+    "flow": {
+      "value": "companion",
+      "confirmed_in": [
+        "badge-blur-tutorial"
+      ],
+      "updated_at": "2026-07-27T19:14:28.970Z"
+    },
+    "storyboard": {
+      "value": "yes",
+      "confirmed_in": [
+        "badge-blur-tutorial"
+      ],
+      "updated_at": "2026-07-27T19:14:29.039Z"
+    }
+  },
+  "sightings": {}
+}

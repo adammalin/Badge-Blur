@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:#27302c;color:#fff;font-family:Inter,sans-serif}
+  .halo{position:absolute;width:1200px;height:850px;left:360px;top:80px;border-radius:50%;background:radial-gradient(circle,rgba(7,91,56,.38),rgba(7,91,56,0) 70%)}
+  .chapter{position:absolute;left:112px;top:70px;color:#70b94b;font-size:23px;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+  .terminal{position:absolute;left:160px;right:160px;top:150px;bottom:130px;border:3px solid #70b94b;border-radius:28px;overflow:hidden;background:#151b18;box-shadow:0 38px 100px rgba(0,0,0,.5)}
+  .chrome{height:70px;background:#2f4641;display:flex;align-items:center;padding:0 26px;gap:13px}.dot{width:17px;height:17px;border-radius:50%;background:#cbd5cf}.title{margin-left:18px;font-size:21px;font-weight:750;color:#cbd5cf}.proof{margin-left:auto;padding:9px 15px;border-radius:999px;background:#075b38;font-size:18px;font-weight:850}
+  .body{padding:38px 48px;font-family:"JetBrains Mono",monospace;font-size:25px;line-height:1.65}.line{opacity:0}.prompt{color:#70b94b}.dim{color:#9fb0a7}.ok{color:#8bfebf}
+  .badge{position:absolute;right:115px;top:70px;padding:13px 19px;border:2px solid #cbd5cf;border-radius:999px;font-size:19px;font-weight:800}
+  .subtitle{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:6;width:1320px;padding:14px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:25px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-nbat" id="root" data-composition-id="frame-02" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-d1uq" class="halo"></div><div data-hf-id="hf-2jz8" class="chapter">1 · Install</div><div data-hf-id="hf-ahkx" class="badge">Actual install output</div>
+  <div data-hf-id="hf-1ms0" class="terminal"><div data-hf-id="hf-6ex2" class="chrome"><i data-hf-id="hf-6bgx" class="dot"></i><i data-hf-id="hf-0j5x" class="dot"></i><i data-hf-id="hf-1q30" class="dot"></i><span data-hf-id="hf-8hie" class="title">Badge Blur tutorial install</span><span data-hf-id="hf-mvzi" class="proof">v0.22.1</span></div>
+    <div data-hf-id="hf-2t3w" class="body">
+      <div data-hf-id="hf-8t5a" class="line l1"><span data-hf-id="hf-99ip" class="prompt">$</span> curl …/bootstrap-mac-source-test.zsh \</div>
+      <div data-hf-id="hf-j5j5" class="line l2">&#160;&#160;--output "$HOME/Downloads/badge-blur-install.zsh"</div>
+      <div data-hf-id="hf-gthe" class="line l3"><span data-hf-id="hf-yo2t" class="prompt">$</span> zsh "$HOME/Downloads/badge-blur-install.zsh" \</div>
+      <div data-hf-id="hf-q2oe" class="line l4">&#160;&#160;"$HOME/Badge-Blur-tutorial"</div>
+      <div data-hf-id="hf-x0un" class="line l5 dim">Downloading the latest main-branch source ZIP…</div>
+      <div data-hf-id="hf-b27t" class="line l6 ok">✓ Grounding DINO model verified</div>
+      <div data-hf-id="hf-a13r" class="line l7 ok">✓ CLIP classifier verified</div>
+      <div data-hf-id="hf-ncc3" class="line l8 ok">✓ Setup complete. Starting Badge Blur…</div>
+    </div>
+  </div>
+  <div data-hf-id="hf-m3ju" class="subtitle">The script creates an isolated copy, verifies dependencies, and launches the app.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".terminal",{y:80,scale:.96,opacity:0},{y:0,scale:1,opacity:1,duration:.9,ease:"power3.out"},.15)
+    .fromTo(".chapter,.badge",{y:-20,opacity:0},{y:0,opacity:1,duration:.55,stagger:.1,ease:"power2.out"},.35)
+    .to(".line",{opacity:1,duration:.08,stagger:.78,ease:"none"},1.0)
+    .fromTo(".proof",{scale:.75,opacity:0},{scale:1,opacity:1,duration:.55,ease:"back.out(1.8)"},7.4)
+    .fromTo(".subtitle",{y:22,opacity:0},{y:0,opacity:1,duration:.55,ease:"power2.out"},.7);
+  window.__timelines["frame-02"]=tl;
+</script>
+</template></body></html>

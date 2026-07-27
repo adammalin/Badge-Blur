@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:transparent;color:#fff;font-family:Inter,sans-serif}
+  .chapter{position:absolute;left:86px;top:45px;z-index:6;padding:12px 18px;border-radius:999px;background:#075b38;font-size:21px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+  .window{position:absolute;left:64px;right:64px;top:98px;bottom:94px;border:3px solid #70b94b;border-radius:28px;overflow:hidden;background:transparent;box-shadow:0 30px 85px rgba(0,0,0,.5)}
+  .proof{position:absolute;right:92px;top:280px;z-index:5;width:330px;display:flex;flex-direction:column;align-items:stretch;gap:12px;opacity:0}.card{padding:14px 18px;border:2px solid rgba(203,213,207,.35);border-radius:14px;background:#075b38;font-size:19px;font-weight:850;text-align:left;box-shadow:0 12px 26px rgba(0,0,0,.28)}.card.light{background:#70b94b;color:#142018}
+  .outputs{position:absolute;left:140px;right:140px;bottom:120px;height:270px;display:flex;gap:18px;z-index:5;opacity:0}.output{flex:1;border:3px solid #cbd5cf;border-radius:18px;overflow:hidden;background:#27302c;position:relative}.output img{width:100%;height:100%;object-fit:cover}.output span{position:absolute;left:12px;bottom:12px;padding:8px 11px;border-radius:8px;background:rgba(7,91,56,.94);font-size:16px;font-weight:850}
+  .subtitle{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:7;width:1450px;padding:13px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:24px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-2ecz" id="root" data-composition-id="frame-08" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-u4qt" class="chapter">7 · Export</div>
+  <div data-hf-id="hf-6r44" class="window"></div>
+  <div data-hf-id="hf-0nwy" class="proof"><span data-hf-id="hf-8uhw" class="card">Re-export this image</span><span data-hf-id="hf-csgh" class="card">Export changed images</span><span data-hf-id="hf-54ss" class="card light">Up to date ✓</span></div>
+  <div data-hf-id="hf-7ie6" class="outputs">
+    <div data-hf-id="hf-z71j" class="output"><img data-hf-id="hf-iuxa" src="assets/images/exported/01-single-frontal-badge-redacted.jpg"><span data-hf-id="hf-b5hn">01 · JPEG</span></div>
+    <div data-hf-id="hf-22vb" class="output"><img data-hf-id="hf-7rwk" src="assets/images/exported/02-two-person-event-badges-redacted.jpg"><span data-hf-id="hf-vbr0">02 · JPEG</span></div>
+    <div data-hf-id="hf-1oka" class="output"><img data-hf-id="hf-y6mi" src="assets/images/exported/03-four-person-group-badges-redacted.jpg"><span data-hf-id="hf-8hql">03 · JPEG</span></div>
+    <div data-hf-id="hf-1a99" class="output"><img data-hf-id="hf-xe6f" src="assets/images/exported/04-outdoor-glare-motion-badge-redacted.jpg"><span data-hf-id="hf-x0c6">04 · JPEG</span></div>
+    <div data-hf-id="hf-42eg" class="output"><img data-hf-id="hf-3gmr" src="assets/images/exported/05-low-light-multiscale-badges-redacted.jpg"><span data-hf-id="hf-oslj">05 · JPEG</span></div>
+  </div>
+  <div data-hf-id="hf-hc9r" class="subtitle">Re-export one image, only changed images, or the complete reviewed batch.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".window",{scale:.95,opacity:0},{scale:1,opacity:1,duration:.75,ease:"power3.out"},.1)
+    .fromTo(".chapter",{x:-28,opacity:0},{x:0,opacity:1,duration:.5,ease:"power2.out"},.3)
+    .fromTo(".proof",{x:36,opacity:0},{x:0,opacity:1,duration:.55,ease:"power3.out"},4.2)
+    .to(".window",{opacity:.2,filter:"blur(12px)",duration:.55,ease:"power2.inOut"},8.9)
+    .fromTo(".outputs",{y:70,opacity:0},{y:0,opacity:1,duration:.75,ease:"power3.out"},9.0)
+    .fromTo(".output",{scale:.9,opacity:0},{scale:1,opacity:1,duration:.45,stagger:.1,ease:"back.out(1.4)"},9.2)
+    .fromTo(".subtitle",{y:20,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.55);
+  window.__timelines["frame-08"]=tl;
+</script>
+</template></body></html>

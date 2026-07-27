@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:transparent;color:#fff;font-family:Inter,sans-serif}
+  .chapter{position:absolute;left:86px;top:45px;z-index:6;padding:12px 18px;border-radius:999px;background:#075b38;font-size:21px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+  .truth{position:absolute;right:86px;top:45px;z-index:6;padding:12px 18px;border:2px solid #70b94b;border-radius:999px;background:#27302c;font-size:19px;font-weight:850}
+  .window{position:absolute;left:64px;right:64px;top:98px;bottom:94px;border:3px solid #70b94b;border-radius:28px;overflow:hidden;background:transparent;box-shadow:0 30px 85px rgba(0,0,0,.5)}
+  .loupe{position:absolute;right:92px;bottom:122px;width:430px;height:270px;border:5px solid #70b94b;border-radius:24px;overflow:hidden;background:#27302c;box-shadow:0 24px 70px rgba(0,0,0,.55);opacity:0}
+  .loupe img{width:100%;height:100%;object-fit:cover;object-position:50% 67%;transform:scale(2.7)}
+  .guide{position:absolute;right:475px;bottom:265px;width:455px;height:4px;background:#70b94b;transform-origin:right center;opacity:0}
+  .steps{position:absolute;left:92px;bottom:122px;z-index:5;display:flex;gap:12px}.step{padding:12px 17px;border-radius:999px;background:#075b38;font-size:19px;font-weight:850;opacity:0}
+  .subtitle{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:7;width:1450px;padding:13px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:24px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-i45l" id="root" data-composition-id="frame-06" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-ky9t" class="chapter">5 · Correct</div><div data-hf-id="hf-y195" class="truth">Real missed badge · corrected during processing</div>
+  <div data-hf-id="hf-6r44" class="window"></div>
+  <div data-hf-id="hf-70xd" class="steps"><span data-hf-id="hf-17nz" class="step">1 · Drag to add</span><span data-hf-id="hf-ebni" class="step">2 · Select mask</span><span data-hf-id="hf-gxj1" class="step">3 · Adjust blur</span><span data-hf-id="hf-u2vi" class="step">4 · Check After</span></div>
+  <div data-hf-id="hf-d5ps" class="guide"></div><div data-hf-id="hf-mxb5" class="loupe"><img data-hf-id="hf-iuxa" src="assets/images/exported/01-single-frontal-badge-redacted.jpg"></div>
+  <div data-hf-id="hf-ajuj" class="subtitle">Add a missed mask, adjust its corners or blur, then confirm the refreshed After view.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".window",{scale:.95,opacity:0},{scale:1,opacity:1,duration:.75,ease:"power3.out"},.1)
+    .fromTo(".chapter,.truth",{y:-20,opacity:0},{y:0,opacity:1,duration:.5,stagger:.1,ease:"power2.out"},.3)
+    .to(".step",{opacity:1,y:0,duration:.4,stagger:2.4,ease:"back.out(1.5)"},1.0)
+    .to(".guide",{opacity:1,scaleX:1,duration:.45,ease:"power2.out"},8.8)
+    .to(".loupe",{opacity:1,scale:1,duration:.55,ease:"back.out(1.45)"},8.9)
+    .fromTo(".subtitle",{y:20,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.55);
+  window.__timelines["frame-06"]=tl;
+</script>
+</template></body></html>

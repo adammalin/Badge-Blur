@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en" data-resolution="landscape">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920,height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#373a36}
+    body{font-family:Inter,sans-serif}
+    #root{position:relative;width:1920px;height:1080px;overflow:hidden;background:#373a36}
+    .scene-host{position:absolute;inset:0;z-index:20;width:1920px;height:1080px;transform-origin:center center;will-change:transform,opacity,filter}
+    .app-footage{position:absolute;left:67px;top:101px;z-index:10;width:1786px;height:882px;border-radius:25px;object-fit:cover;opacity:0;will-change:transform,opacity}
+    #import-footage{transform-origin:64% 39%}
+    #process-footage{transform-origin:50% 74%}
+    #inspect-footage{transform-origin:50% 60%}
+    #correct-footage{transform-origin:50% 67%}
+    #confirm-footage{transform-origin:50% 40%}
+    #export-footage{transform-origin:50% 75%}
+  </style>
+</head>
+<body>
+<div data-hf-id="hf-gfdk" id="root" data-composition-id="main" data-start="0" data-duration="103" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-mggy" id="scene-01" class="clip scene-host" data-composition-id="frame-01" data-composition-src="compositions/frames/01-hook.html" data-start="0" data-duration="9" data-track-index="1" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-g2an" id="scene-02" class="clip scene-host" data-composition-id="frame-02" data-composition-src="compositions/frames/02-install.html" data-start="8.5" data-duration="12" data-track-index="2" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-73qr" id="scene-03" class="clip scene-host" data-composition-id="frame-03" data-composition-src="compositions/frames/03-import.html" data-start="20" data-duration="13" data-track-index="1" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-mbbq" id="scene-04" class="clip scene-host" data-composition-id="frame-04" data-composition-src="compositions/frames/04-process.html" data-start="32.5" data-duration="10" data-track-index="2" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-mq2u" id="scene-05" class="clip scene-host" data-composition-id="frame-05" data-composition-src="compositions/frames/05-review.html" data-start="42" data-duration="13" data-track-index="1" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-rz4s" id="scene-06" class="clip scene-host" data-composition-id="frame-06" data-composition-src="compositions/frames/06-correct.html" data-start="54.5" data-duration="15" data-track-index="2" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-szsz" id="scene-07" class="clip scene-host" data-composition-id="frame-07" data-composition-src="compositions/frames/07-review-next.html" data-start="69" data-duration="11" data-track-index="1" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-kwxh" id="scene-08" class="clip scene-host" data-composition-id="frame-08" data-composition-src="compositions/frames/08-export.html" data-start="79.5" data-duration="13" data-track-index="2" data-width="1920" data-height="1080"></div>
+  <div data-hf-id="hf-ep0g" id="scene-09" class="clip scene-host" data-composition-id="frame-09" data-composition-src="compositions/frames/09-outro.html" data-start="92" data-duration="11" data-track-index="1" data-width="1920" data-height="1080"></div>
+
+  <video data-hf-id="hf-media-import" id="import-footage" class="clip app-footage" src="assets/footage/import-flow.mp4" data-start="20" data-duration="13" data-track-index="10" muted playsinline preload="auto"></video>
+  <video data-hf-id="hf-media-process" id="process-footage" class="clip app-footage" src="assets/footage/process-flow.mp4" data-start="32.5" data-duration="10" data-track-index="11" muted playsinline preload="auto"></video>
+  <video data-hf-id="hf-media-inspect" id="inspect-footage" class="clip app-footage" src="assets/footage/inspect-flow.mp4" data-start="42" data-duration="13" data-track-index="10" muted playsinline preload="auto"></video>
+  <video data-hf-id="hf-media-correct" id="correct-footage" class="clip app-footage" src="assets/footage/correct-flow.mp4" data-start="54.5" data-duration="15" data-track-index="11" muted playsinline preload="auto"></video>
+  <video data-hf-id="hf-media-confirm" id="confirm-footage" class="clip app-footage" src="assets/footage/confirm-flow.mp4" data-start="69" data-duration="11" data-track-index="10" muted playsinline preload="auto"></video>
+  <video data-hf-id="hf-media-export" id="export-footage" class="clip app-footage" src="assets/footage/export-flow.mp4" data-start="79.5" data-duration="13" data-track-index="11" muted playsinline preload="auto"></video>
+
+  <audio data-hf-id="hf-0e4d" id="voice-01" class="clip" src="assets/voice/01.wav" data-start="0.65" data-duration="7.701" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-nvhi" id="voice-02" class="clip" src="assets/voice/02.wav" data-start="9.2" data-duration="10.496" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-klxz" id="voice-03" class="clip" src="assets/voice/03.wav" data-start="20.7" data-duration="11.157" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-w772" id="voice-04" class="clip" src="assets/voice/04.wav" data-start="33.2" data-duration="8.171" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-xxpb" id="voice-05" class="clip" src="assets/voice/05.wav" data-start="42.7" data-duration="11.157" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-k9wx" id="voice-06" class="clip" src="assets/voice/06.wav" data-start="55.2" data-duration="12.672" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-mck1" id="voice-07" class="clip" src="assets/voice/07.wav" data-start="69.7" data-duration="9.344" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-i7ci" id="voice-08" class="clip" src="assets/voice/08.wav" data-start="80.2" data-duration="11.627" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-o69o" id="voice-09" class="clip" src="assets/voice/09.wav" data-start="92.7" data-duration="9.237" data-track-index="20" data-volume="1"></audio>
+  <audio data-hf-id="hf-7diz" id="bgm" class="clip" src="assets/bgm/tutorial-bed.wav" data-start="0" data-duration="103" data-track-index="21" data-volume="0.1"></audio>
+
+  <audio data-hf-id="hf-b8sz" id="sfx-open" class="clip" src="assets/sfx/whoosh-short.mp3" data-start=".35" data-duration=".57" data-track-index="31" data-volume=".22"></audio>
+  <audio data-hf-id="hf-mnvv" id="sfx-install-typing" class="clip" src="assets/sfx/typing.mp3" data-start="10.4" data-duration="1.5" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-6aid" id="sfx-import-click" class="clip" src="assets/sfx/click-soft.mp3" data-start="24.5" data-duration=".37" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-1nf0" id="sfx-process-click" class="clip" src="assets/sfx/click-soft.mp3" data-start="33.8" data-duration=".37" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-e69n" id="sfx-inspect-whoosh" class="clip" src="assets/sfx/whoosh-short.mp3" data-start="43" data-duration=".57" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-s4ou" id="sfx-correct-click" class="clip" src="assets/sfx/click-soft.mp3" data-start="56.5" data-duration=".37" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-ff0j" id="sfx-review-chime" class="clip" src="assets/sfx/chime.mp3" data-start="74.2" data-duration="2.5" data-track-index="31" data-volume=".18"></audio>
+  <audio data-hf-id="hf-e4tn" id="sfx-export-chime" class="clip" src="assets/sfx/chime.mp3" data-start="88.8" data-duration="2.5" data-track-index="31" data-volume=".17"></audio>
+  <audio data-hf-id="hf-hsko" id="sfx-outro-chime" class="clip" src="assets/sfx/chime.mp3" data-start="96.5" data-duration="2.5" data-track-index="31" data-volume=".16"></audio>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.to("#scene-01",{filter:"blur(12px)",scale:1.025,opacity:0,duration:.5,ease:"power2.inOut"},8.5)
+    .fromTo("#scene-02",{filter:"blur(12px)",scale:.98,opacity:0},{filter:"blur(0px)",scale:1,opacity:1,duration:.5,ease:"power2.inOut"},8.5)
+    .to("#scene-02",{x:-240,opacity:0,duration:.5,ease:"power3.inOut"},20)
+    .fromTo("#scene-03",{x:240,opacity:0},{x:0,opacity:1,duration:.5,ease:"power3.inOut"},20)
+    .to("#scene-03",{filter:"blur(12px)",scale:1.02,opacity:0,duration:.5,ease:"power2.inOut"},32.5)
+    .fromTo("#scene-04",{filter:"blur(12px)",scale:.98,opacity:0},{filter:"blur(0px)",scale:1,opacity:1,duration:.5,ease:"power2.inOut"},32.5)
+    .to("#scene-04",{x:-240,opacity:0,duration:.5,ease:"power3.inOut"},42)
+    .fromTo("#scene-05",{x:240,opacity:0},{x:0,opacity:1,duration:.5,ease:"power3.inOut"},42)
+    .to("#scene-05",{filter:"blur(15px)",opacity:0,duration:.55,ease:"power1.in"},54.5)
+    .fromTo("#scene-06",{filter:"blur(15px)",opacity:0},{filter:"blur(0px)",opacity:1,duration:.55,ease:"power1.out"},54.5)
+    .to("#scene-06",{x:-240,opacity:0,duration:.5,ease:"power3.inOut"},69)
+    .fromTo("#scene-07",{x:240,opacity:0},{x:0,opacity:1,duration:.5,ease:"power3.inOut"},69)
+    .to("#scene-07",{filter:"blur(12px)",scale:1.02,opacity:0,duration:.5,ease:"power2.inOut"},79.5)
+    .fromTo("#scene-08",{filter:"blur(12px)",scale:.98,opacity:0},{filter:"blur(0px)",scale:1,opacity:1,duration:.5,ease:"power2.inOut"},79.5)
+    .to("#scene-08",{opacity:0,duration:.45,ease:"power2.in"},92)
+    .fromTo("#scene-09",{opacity:0},{opacity:1,duration:.7,ease:"power2.out"},92.2)
+    .fromTo("#import-footage",{opacity:0},{opacity:1,duration:.25,ease:"power1.out"},20)
+    .to("#import-footage",{opacity:0,duration:.5,ease:"power1.inOut"},32.5)
+    .fromTo("#process-footage",{opacity:0},{opacity:1,duration:.5,ease:"power1.inOut"},32.5)
+    .to("#process-footage",{opacity:0,duration:.5,ease:"power1.inOut"},42)
+    .fromTo("#inspect-footage",{opacity:0},{opacity:1,duration:.5,ease:"power1.inOut"},42)
+    .to("#inspect-footage",{opacity:0,duration:.55,ease:"power1.inOut"},54.5)
+    .fromTo("#correct-footage",{opacity:0},{opacity:1,duration:.55,ease:"power1.inOut"},54.5)
+    .to("#correct-footage",{opacity:0,duration:.5,ease:"power1.inOut"},69)
+    .fromTo("#confirm-footage",{opacity:0},{opacity:1,duration:.5,ease:"power1.inOut"},69)
+    .to("#confirm-footage",{opacity:0,duration:.5,ease:"power1.inOut"},79.5)
+    .fromTo("#export-footage",{opacity:0},{opacity:1,duration:.5,ease:"power1.inOut"},79.5)
+    .to("#export-footage",{opacity:0,duration:.45,ease:"power1.in"},92)
+    .to("#import-footage",{scale:1.08,duration:3.2,ease:"power1.inOut"},25.4)
+    .to("#process-footage",{scale:1.09,duration:6.4,ease:"power1.inOut"},34.5)
+    .to("#inspect-footage",{scale:1.16,duration:2.4,ease:"power2.inOut"},45)
+    .to("#inspect-footage",{x:-55,y:-25,duration:2,ease:"sine.inOut"},47.4)
+    .to("#inspect-footage",{x:0,y:0,scale:1,duration:2.6,ease:"power2.inOut"},50.1)
+    .to("#correct-footage",{scale:1.12,duration:3.1,ease:"power2.inOut"},55.9)
+    .to("#correct-footage",{scale:1,duration:2.2,ease:"power2.inOut"},66.2)
+    .to("#confirm-footage",{scale:1.055,duration:4,ease:"power1.inOut"},72.9)
+    .to("#export-footage",{scale:1.075,duration:5,ease:"power1.inOut"},81.3);
+  window.__timelines["main"]=tl;
+</script>
+</body>
+</html>

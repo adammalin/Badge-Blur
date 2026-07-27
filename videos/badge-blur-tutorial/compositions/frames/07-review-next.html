@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head></head><body><template>
+<style>
+  #root{position:absolute;inset:0;overflow:hidden;background:transparent;color:#fff;font-family:Inter,sans-serif}
+  .chapter{position:absolute;left:86px;top:45px;z-index:6;padding:12px 18px;border-radius:999px;background:#075b38;font-size:21px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+  .window{position:absolute;left:64px;right:64px;top:98px;bottom:94px;border:3px solid #70b94b;border-radius:28px;overflow:hidden;background:transparent;box-shadow:0 30px 85px rgba(0,0,0,.5)}
+  .action{position:absolute;left:1230px;top:194px;width:118px;height:40px;border:4px solid #70b94b;border-radius:11px;box-shadow:0 0 0 9999px rgba(18,25,22,.08)}
+  .outcomes{position:absolute;left:50%;bottom:112px;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:18px}.outcome{padding:14px 22px;border-radius:999px;background:#075b38;font-size:22px;font-weight:850}.arrow{color:#70b94b;font-size:34px;font-weight:900}
+  .subtitle{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);z-index:7;width:1450px;padding:13px 24px;border-radius:15px;background:rgba(20,27,24,.94);font-size:24px;font-weight:650;text-align:center}
+</style>
+<div data-hf-id="hf-umvi" id="root" data-composition-id="frame-07" data-width="1920" data-height="1080">
+  <div data-hf-id="hf-ajhy" class="chapter">6 · Confirm</div>
+  <div data-hf-id="hf-6r44" class="window"><div data-hf-id="hf-dpdy" class="action"></div></div>
+  <div data-hf-id="hf-galz" class="outcomes"><span data-hf-id="hf-0gi2" class="outcome">Saved</span><span data-hf-id="hf-v68i" class="arrow">→</span><span data-hf-id="hf-qqfa" class="outcome">Reviewed</span><span data-hf-id="hf-f1jq" class="arrow">→</span><span data-hf-id="hf-jbdb" class="outcome">Next image</span></div>
+  <div data-hf-id="hf-jfjs" class="subtitle">Save, review &amp; next records this photo and advances to the next unfinished review.</div>
+</div>
+<script>
+  window.__timelines=window.__timelines||{};
+  var tl=gsap.timeline({paused:true});
+  tl.fromTo(".window",{y:70,opacity:0},{y:0,opacity:1,duration:.75,ease:"power3.out"},.1)
+    .fromTo(".chapter",{x:-28,opacity:0},{x:0,opacity:1,duration:.5,ease:"power2.out"},.3)
+    .fromTo(".action",{scale:.78,opacity:0},{scale:1,opacity:1,duration:.55,ease:"back.out(1.7)"},1.9)
+    .to(".action",{scale:.94,duration:.16,ease:"power2.in"},3.7)
+    .to(".action",{scale:1,duration:.3,ease:"back.out(2)"},3.87)
+    .fromTo(".outcome,.arrow",{y:24,opacity:0},{y:0,opacity:1,duration:.45,stagger:.18,ease:"power2.out"},4.15)
+    .fromTo(".subtitle",{y:20,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.55);
+  window.__timelines["frame-07"]=tl;
+</script>
+</template></body></html>
