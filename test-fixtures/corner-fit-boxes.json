@@ -1,0 +1,115 @@
+[
+  {
+    "imageName": "01-single-frontal-badge.png",
+    "boxes": [
+      {
+        "x": 465,
+        "y": 940,
+        "width": 118,
+        "height": 169,
+        "label": "conference badge",
+        "score": 0.6196157932281494
+      }
+    ]
+  },
+  {
+    "imageName": "02-two-person-event-badges.png",
+    "boxes": [
+      {
+        "x": 474,
+        "y": 726,
+        "width": 80,
+        "height": 135,
+        "label": "conference badge",
+        "score": 0.26857542991638184
+      },
+      {
+        "x": 947,
+        "y": 726,
+        "width": 63,
+        "height": 119,
+        "label": "conference badge",
+        "score": 0.18618237972259521
+      }
+    ]
+  },
+  {
+    "imageName": "03-four-person-group-badges.png",
+    "boxes": [
+      {
+        "x": 908,
+        "y": 510,
+        "width": 61,
+        "height": 100,
+        "label": "conference badge",
+        "score": 0.4517136216163635
+      },
+      {
+        "x": 1174,
+        "y": 707,
+        "width": 73,
+        "height": 67,
+        "label": "conference badge",
+        "score": 0.4009062647819519
+      },
+      {
+        "x": 621,
+        "y": 658,
+        "width": 60,
+        "height": 92,
+        "label": "conference badge",
+        "score": 0.3323661684989929
+      },
+      {
+        "x": 343,
+        "y": 505,
+        "width": 60,
+        "height": 90,
+        "label": "conference badge",
+        "score": 0.3287721872329712
+      }
+    ]
+  },
+  {
+    "imageName": "04-outdoor-glare-motion-badge.png",
+    "boxes": [
+      {
+        "x": 750,
+        "y": 630,
+        "width": 114,
+        "height": 88,
+        "label": "ID badge",
+        "score": 0.19773024320602417
+      }
+    ]
+  },
+  {
+    "imageName": "05-low-light-multiscale-badges.png",
+    "boxes": [
+      {
+        "x": 1222,
+        "y": 433,
+        "width": 58,
+        "height": 69,
+        "label": "conference badge",
+        "score": 0.35253745317459106
+      },
+      {
+        "x": 815,
+        "y": 527,
+        "width": 70,
+        "height": 90,
+        "label": "conference badge",
+        "score": 0.3332361578941345
+      },
+      {
+        "x": 235,
+        "y": 770,
+        "width": 274,
+        "height": 278,
+        "label": "conference badge",
+        "score": 0.22717833518981934
+      }
+    ]
+  }
+]

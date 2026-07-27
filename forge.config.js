@@ -57,7 +57,7 @@ export default {
       ? { osxNotarize: macNotarizeConfig }
       : {}),
     ignore: [
-      /^\/(?:\.git|\.github|\.cache|benchmark-output|demo-test-images|out|public|release-notes|releases|src|test-data|test-output)(?:\/|$)/,
+      /^\/(?:\.git|\.github|\.cache|benchmark-output|demo-test-images|out|public|release-notes|releases|src|test-data|test-fixtures|test-output)(?:\/|$)/,
       /^\/(?:CHANGELOG|README|TEST-REPORT)\.md$/,
       /^\/index\.html$/,
       /^\/vite\.config\.js$/,

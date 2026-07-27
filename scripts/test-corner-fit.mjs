@@ -3,20 +3,16 @@ import { resolve } from "node:path";
 import sharp from "sharp";
 import { fitMaskCorners } from "./image-runtime.mjs";
 
-const report = JSON.parse(
-  await readFile(resolve("benchmark-output/benchmark-report.json"), "utf8"),
+const frozenDetections = JSON.parse(
+  await readFile(resolve("test-fixtures/corner-fit-boxes.json"), "utf8"),
 );
-const model = report.models.find(
-  (entry) => entry.modelId === "Xenova/owlv2-base-patch16-ensemble",
-);
-if (!model) throw new Error("OWLv2 benchmark results are missing.");
 
 let detected = 0;
 let fitted = 0;
 let fallback = 0;
 const files = [];
 
-for (const entry of model.files) {
+for (const entry of frozenDetections) {
   const source = await readFile(resolve("demo-test-images", entry.imageName));
   const result = await fitMaskCorners(source, entry.imageName, {
     boxes: entry.boxes,
