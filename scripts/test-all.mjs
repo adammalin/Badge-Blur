@@ -9,6 +9,7 @@ const tests = [
   "scripts/test-worker-policy.mjs",
   "scripts/test-worker-pool.mjs",
   "scripts/test-classifier-policy.mjs",
+  "scripts/test-detection-orientation.mjs",
   "scripts/test-person-guidance.mjs",
   "scripts/test-review-attention.mjs",
   "scripts/test-review-ui.mjs",
@@ -21,6 +22,7 @@ const tests = [
   "scripts/test-thumbnail-preview.mjs",
   "scripts/test-mask-controls.mjs",
   "scripts/test-edit-revisions.mjs",
+  "scripts/test-export-state.mjs",
   "scripts/test-server-lifecycle.mjs",
 ];
 

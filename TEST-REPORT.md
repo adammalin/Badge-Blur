@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-27
-Source candidate: `0.22.0`; locally qualified packaged Mac candidate: `0.22.0`;
+Source candidate: `0.22.1`; locally qualified packaged Mac candidate: `0.22.1`;
 Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -478,6 +478,29 @@ matched-platform CI job. Organization-controlled certificate credentials are
 also still required to activate trusted Windows signing and Apple Developer ID
 signing/notarization; the release configuration supports those credentials but
 none were used for this local Mac candidate.
+
+## Version 0.22.1 release-candidate qualification
+
+The 0.22.1 source and Apple-silicon Mac candidate passed:
+
+- all 22 deterministic tests through `npm test`, including revision-aware
+  export reuse and complementary badge-orientation coverage;
+- the packaged Electron review smoke, including a full-resolution After
+  regeneration after adding a manual mask;
+- the frozen 18-image production regression with the unchanged result of 34
+  true-positive masks, four false-positive masks, 75.6% recall, and 89.5%
+  precision;
+- strict deep verification of the locally applied ad-hoc Mac signature; and
+- SHA-256 verification of the 0.22.1 DMG and ZIP candidates.
+
+The locally qualified Mac artifacts are:
+
+```text
+1dab854508dafd5eb4f22d3778b89d6d8156d53fb077dfb3ae4380b71ab26101  Badge-Blur-Mac-arm64-v0.22.1.dmg
+f6bdeb549c7f89aa94fafa11f5f14d58fe376afbd26ec4f831ac8dac1db30d95  Badge-Blur-Mac-arm64-v0.22.1.zip
+```
+
+The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
 

@@ -954,8 +954,8 @@ async function detectGroundingDinoTorsoCrops({
         const centerX = (box.x + box.width / 2) / cropInfo.width;
         const centerY = (box.y + box.height / 2) / cropInfo.height;
         return (
-          aspect >= 0.42 &&
-          aspect <= 1.65 &&
+          aspect >= 0.3 &&
+          aspect <= 2.2 &&
           areaRatio >= 0.00025 &&
           areaRatio <= 0.035 &&
           centerX >= 0.1 &&

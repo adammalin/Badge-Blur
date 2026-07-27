@@ -13,6 +13,37 @@ export function deduplicateBadgeDetections(boxes, threshold = 0.32) {
   );
 }
 
+export function complementaryBadgePrompt(existingBadges, fallbackPrompt) {
+  if (!existingBadges.length) return fallbackPrompt;
+  const hasWideBadge = existingBadges.some(
+    (box) => box.width / Math.max(1, box.height) >= 1.1,
+  );
+  const hasTallBadge = existingBadges.some(
+    (box) => box.width / Math.max(1, box.height) <= 0.9,
+  );
+  if (hasWideBadge && !hasTallBadge) {
+    return "vertical employee identification badge.";
+  }
+  if (hasTallBadge && !hasWideBadge) {
+    return "horizontal employee identification badge.";
+  }
+  return fallbackPrompt;
+}
+
+export function isComplementaryBadgeOrientation(candidate, existingBadges) {
+  if (!existingBadges.length) return true;
+  const candidateAspect = candidate.width / Math.max(1, candidate.height);
+  const hasWideBadge = existingBadges.some(
+    (box) => box.width / Math.max(1, box.height) >= 1.1,
+  );
+  const hasTallBadge = existingBadges.some(
+    (box) => box.width / Math.max(1, box.height) <= 0.9,
+  );
+  if (hasWideBadge && !hasTallBadge) return candidateAspect <= 0.95;
+  if (hasTallBadge && !hasWideBadge) return candidateAspect >= 1.05;
+  return true;
+}
+
 export function isPlausibleBadgeBox(box, image) {
   const area = box.width * box.height;
   const imageArea = image.width * image.height;

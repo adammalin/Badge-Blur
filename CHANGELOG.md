@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.22.1 — 2026-07-27
+
+- Add explicit per-image re-export and a **Re-export changed** batch action
+  that targets only images whose edit revision is newer than their saved
+  export.
+- Regenerate the visible redacted After view immediately after mask or blur
+  edits, including manually added masks.
+- Reuse the current full-resolution After result for autosave/manual save and
+  coalesce duplicate queued saves, avoiding redundant redaction work.
+- Search an already matched torso once for a complementary vertical or
+  horizontal credential, while retaining the strict detected-torso gate and
+  classifier check.
+- Expand accepted torso-badge geometry for legitimate portrait and landscape
+  cards without changing the frozen production benchmark's 75.6% recall and
+  89.5% precision.
+- Extend deterministic and packaged-Electron coverage for revision-aware
+  export reuse, orientation handling, and manual-mask After regeneration.
+
 ## 0.22.0 — 2026-07-27
 
 - Add a selected-mask blur-strength slider with per-mask persistence in

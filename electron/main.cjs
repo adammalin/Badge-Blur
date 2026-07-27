@@ -518,6 +518,11 @@ function createMainWindow(url) {
         const reviewSaveAndAdvance =
           reviewAdvanceState.activeIndex === 1 &&
           reviewAdvanceState.reviewConfirmations[0] === true;
+        const manualMaskAfterState = await smoke.addManualMaskAndShowAfter();
+        const manualMaskAfterRegenerated =
+          manualMaskAfterState.redactedPreviewRevision ===
+            manualMaskAfterState.editRevision &&
+          manualMaskAfterState.redactedPreviewBytes > 0;
 
         return {
           ...result,
@@ -543,6 +548,7 @@ function createMainWindow(url) {
           manualSaveCompleted,
           manualJpegExport,
           reviewSaveAndAdvance,
+          manualMaskAfterRegenerated,
           inactiveDeleteProtected:
             inactiveDeleteState.boxCounts[0] === 2 &&
             inactiveDeleteState.boxCounts[1] === 1,
@@ -567,14 +573,19 @@ function createMainWindow(url) {
         await mainWindow.webContents.executeJavaScript(`(() => {
           const viewer = document.querySelector(".viewer-frame");
           const canvas = document.querySelector(".canvas-wrap canvas");
+          const afterImage = document.querySelector(
+            ".canvas-wrap .after-preview:not([hidden])"
+          );
           const viewerRect = viewer?.getBoundingClientRect();
-          const canvasRect = canvas?.getBoundingClientRect();
+          const photoRect = (
+            afterImage || canvas
+          )?.getBoundingClientRect();
           return (
             document.body.scrollHeight > window.innerHeight &&
             getComputedStyle(document.body).overflowY === "auto" &&
             viewerRect?.height >= 380 &&
-            canvasRect?.width > 0 &&
-            canvasRect?.height > 0
+            photoRect?.width > 0 &&
+            photoRect?.height > 0
           );
         })()`);
       const passed =
@@ -605,6 +616,7 @@ function createMainWindow(url) {
         capabilities.manualSaveCompleted &&
         capabilities.manualJpegExport &&
         capabilities.reviewSaveAndAdvance &&
+        capabilities.manualMaskAfterRegenerated &&
         capabilities.inactiveDeleteProtected &&
         capabilities.activeDeleteScoped &&
         capabilities.reviewProgress &&

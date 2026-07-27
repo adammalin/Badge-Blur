@@ -19,9 +19,15 @@ import {
   globalClassifierDecision,
 } from "./classifier-utils.js";
 import {
+  complementaryBadgePrompt,
   deduplicateBadgeDetections,
   filterBadgeDetections,
+  isComplementaryBadgeOrientation,
 } from "./detection-utils.js";
+import {
+  hasUnexportedChanges,
+  reusableRedactedPreview,
+} from "./export-state.js";
 import {
   createUniqueRunDirectory,
   findRunEntry,
@@ -91,7 +97,7 @@ import {
   steppedViewZoom,
 } from "./view-transform.js";
 
-const APP_VERSION = "0.22.0";
+const APP_VERSION = "0.22.1";
 const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -144,6 +150,7 @@ const elements = {
   exportWorkflowArrow: document.querySelector("#exportWorkflowArrow"),
   pauseResumeButton: document.querySelector("#pauseResumeButton"),
   exportAllButton: document.querySelector("#exportAllButton"),
+  exportChangedButton: document.querySelector("#exportChangedButton"),
   changeExportButton: document.querySelector("#changeExportButton"),
   resetExportButton: document.querySelector("#resetExportButton"),
   exportDestination: document.querySelector("#exportDestination"),
@@ -277,6 +284,7 @@ elements.pauseResumeButton.addEventListener("click", () => {
   else if (batchPaused) void startBatch();
 });
 elements.exportAllButton.addEventListener("click", exportAll);
+elements.exportChangedButton.addEventListener("click", exportChanged);
 elements.openExportFolderButton.addEventListener("click", openExportFolder);
 elements.attentionQueueButton.addEventListener("click", () => {
   void goToNextAttentionItem();
@@ -402,6 +410,7 @@ if (new URLSearchParams(window.location.search).get("smoke") === "1") {
     loadFixture: loadReviewSmokeFixture,
     state: reviewSmokeState,
     simulateOtherImageProcessing,
+    addManualMaskAndShowAfter,
   });
 }
 initializeTheme();
@@ -588,6 +597,9 @@ function reviewSmokeState() {
     exportStatus: activeItem?.exportStatus || null,
     exportInFlight: Boolean(activeItem?.exportInFlight),
     exportQueueCount: activeItem?.exportQueueCount || 0,
+    editRevision: activeItem?.editRevision ?? null,
+    redactedPreviewRevision: activeItem?.redactedPreviewRevision ?? null,
+    redactedPreviewBytes: activeItem?.redactedPreviewBlob?.size || 0,
     imageInfoOutputFormat: activeItem?.imageInfo?.outputFormat || null,
     reviewConfirmations: items.map((item) => item.reviewConfirmed),
     reviewActionInFlight: Boolean(activeItem?.reviewActionInFlight),
@@ -603,6 +615,28 @@ function simulateOtherImageProcessing(enabled) {
   running = Boolean(enabled);
   if (otherItem) otherItem.processing = Boolean(enabled);
   if (activeItem) renderItemStatus(activeItem);
+  return reviewSmokeState();
+}
+
+async function addManualMaskAndShowAfter() {
+  const item = items[activeIndex];
+  if (!item) return reviewSmokeState();
+  const manualBox = {
+    id: `smoke-manual-${crypto.randomUUID()}`,
+    x: item.width * 0.35,
+    y: item.height * 0.68,
+    width: item.width * 0.2,
+    height: item.height * 0.08,
+    label: "manual badge",
+    score: 1,
+    source: "manual",
+  };
+  manualBox.points = rectangleCorners(manualBox);
+  item.boxes.push(manualBox);
+  item.manualAddedCount += 1;
+  item.selectedBoxId = manualBox.id;
+  markItemEdited(item);
+  await setItemView(item, "after");
   return reviewSmokeState();
 }
 
@@ -1017,6 +1051,7 @@ async function setSelectedFiles(selected) {
     viewScaleMode: defaultViewScaleMode,
     viewZoom: 1,
     redactedPreviewUrl: null,
+    redactedPreviewBlob: null,
     redactedPreviewRevision: -1,
     redactedPreviewRequest: null,
     metadataSidecarBlob: null,
@@ -1024,6 +1059,7 @@ async function setSelectedFiles(selected) {
     metadataSidecarRunId: null,
     exportQueueCount: 0,
     exportInFlight: false,
+    activeExportRevision: -1,
     editRevision: 0,
     exportRevision: -1,
     importedRun: false,
@@ -1691,6 +1727,7 @@ function releasePreview(item, { includeRedacted = false } = {}) {
   if (includeRedacted) {
     if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
     item.redactedPreviewUrl = null;
+    item.redactedPreviewBlob = null;
     item.redactedPreviewRevision = -1;
     item.redactedPreviewRequest = null;
   }
@@ -2233,17 +2270,20 @@ async function detectTorsoRescues(
   personGuidance,
 ) {
   const candidates = [];
-  const initiallyMatchedPeople = new Set(
-    associateBadgesToPeople(personGuidance, globalBoxes).matchedPersonIds,
+  const initialAssociation = associateBadgesToPeople(
+    personGuidance,
+    globalBoxes,
   );
 
   for (const guide of personGuidance) {
     const region = guide.torso;
     if (region.width < 48 || region.height < 64) continue;
-    if (initiallyMatchedPeople.has(guide.id)) {
-      guide.badgeFoundBeforeRescue = true;
-      continue;
-    }
+    const existingBadgeIds =
+      initialAssociation.badgeIdsByPerson[guide.id] || [];
+    const existingBadges = globalBoxes.filter((box) =>
+      existingBadgeIds.includes(box.id),
+    );
+    guide.badgeFoundBeforeRescue = existingBadges.length > 0;
     const torso = await localImageRequest("/api/image/crop", item.file, {
       region,
       width: 1200,
@@ -2257,24 +2297,29 @@ async function detectTorsoRescues(
         height: torso.info.height,
       };
       let lanyards = [];
-      try {
-        await yieldToUi();
-        const lanyardOutput = await models.detector(
-          torsoUrl,
-          [LANYARD_PROMPT],
-          {
-            threshold: LANYARD_THRESHOLD,
-            top_k: 12,
-          },
-        );
-        lanyards = deduplicateBadgeDetections(
-          lanyardOutput
-            .map((result) => normalizeDetection(result, cropImage))
-            .filter((box) => isPlausibleLanyard(box, cropImage)),
-          0.38,
-        ).slice(0, 3);
-      } catch (error) {
-        console.warn("Lanyard guidance was unavailable for one person.", error);
+      // An already-matched torso only needs a quick complementary badge
+      // search. Skip the lanyard pass so finding a second credential does
+      // not materially slow the common case.
+      if (existingBadges.length === 0) {
+        try {
+          await yieldToUi();
+          const lanyardOutput = await models.detector(
+            torsoUrl,
+            [LANYARD_PROMPT],
+            {
+              threshold: LANYARD_THRESHOLD,
+              top_k: 12,
+            },
+          );
+          lanyards = deduplicateBadgeDetections(
+            lanyardOutput
+              .map((result) => normalizeDetection(result, cropImage))
+              .filter((box) => isPlausibleLanyard(box, cropImage)),
+            0.38,
+          ).slice(0, 3);
+        } catch (error) {
+          console.warn("Lanyard guidance was unavailable for one person.", error);
+        }
       }
       guide.lanyardCount = lanyards.length;
       guide.lanyardDetected = lanyards.length > 0;
@@ -2288,7 +2333,8 @@ async function detectTorsoRescues(
         ),
       );
       await yieldToUi();
-      const output = await models.detector(torsoUrl, [prompt], {
+      const rescuePrompt = complementaryBadgePrompt(existingBadges, prompt);
+      const output = await models.detector(torsoUrl, [rescuePrompt], {
         threshold: lanyards.length
           ? LANYARD_BADGE_THRESHOLD
           : TORSO_THRESHOLD,
@@ -2299,6 +2345,9 @@ async function detectTorsoRescues(
         cropImage,
       )
         .filter((box) => isPlausibleTorsoBadge(box, cropImage))
+        .filter((box) =>
+          isComplementaryBadgeOrientation(box, existingBadges),
+        )
         .filter(
           (box) =>
             lanyardSearchRegions.length === 0 ||
@@ -2307,7 +2356,8 @@ async function detectTorsoRescues(
             ),
         )
         .sort((a, b) => b.score - a.score)
-        .slice(0, 1);
+        .slice(0, existingBadges.length > 0 ? 4 : 1);
+      let acceptedForPerson = 0;
       for (const box of best) {
         const mapped = {
           ...box,
@@ -2341,6 +2391,8 @@ async function detectTorsoRescues(
               },
             }),
           );
+          acceptedForPerson += 1;
+          if (acceptedForPerson >= 1) break;
         }
       }
     } finally {
@@ -2406,8 +2458,8 @@ function isPlausibleTorsoBadge(box, crop) {
   const centerX = (box.x + box.width / 2) / crop.width;
   const centerY = (box.y + box.height / 2) / crop.height;
   return (
-    aspect >= 0.42 &&
-    aspect <= 1.65 &&
+    aspect >= 0.3 &&
+    aspect <= 2.2 &&
     areaRatio >= 0.00025 &&
     areaRatio <= 0.035 &&
     centerX >= 0.1 &&
@@ -3188,7 +3240,9 @@ function renderItemStatus(item) {
     ? "Saving…"
     : item.exportQueueCount > 0
       ? "Save queued"
-      : "Save only";
+      : item.exportRevision >= 0
+        ? "Re-export this image"
+        : "Export this image";
   card.querySelector("canvas").classList.toggle("is-read-only", reviewLocked);
   updateSelectedMaskStrengthControl(item, card, reviewLocked);
   updateCurrentImageReviewState(card, item);
@@ -3380,7 +3434,15 @@ async function ensureRedactedPreview(item) {
 
 function setRedactedPreview(item, blob, revision = item.editRevision) {
   return applyForCurrentEditRevision(item, revision, () => {
+    if (
+      item.redactedPreviewBlob === blob &&
+      item.redactedPreviewRevision === revision &&
+      item.redactedPreviewUrl
+    ) {
+      return;
+    }
     if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+    item.redactedPreviewBlob = blob;
     item.redactedPreviewUrl = URL.createObjectURL(blob);
     item.redactedPreviewRevision = revision;
     updateItemView(item);
@@ -3395,12 +3457,21 @@ function markItemEdited(item) {
   refreshItemAttention(item);
   if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
   item.redactedPreviewUrl = null;
+  item.redactedPreviewBlob = null;
   item.redactedPreviewRevision = -1;
   item.exportStatus = activeRun
     ? "Edit pending auto-save…"
     : "Edit preview ready; choose an export destination to auto-save";
   updateItemView(item);
   renderItemStatus(item);
+  updateButtons();
+  if (item.viewMode === "after") {
+    void ensureRedactedPreview(item).catch((error) => {
+      console.error(error);
+      item.exportStatus = `Preview failed: ${error.message}`;
+      renderItemStatus(item);
+    });
+  }
   scheduleItemExport(item);
 }
 
@@ -4030,6 +4101,23 @@ async function ensureExportRun({ allowPrompt = false } = {}) {
 function queueItemExport(item, options = {}) {
   clearTimeout(itemExportTimers.get(item.id));
   itemExportTimers.delete(item.id);
+  if (item.exportQueueCount > 0) {
+    item.exportStatus = options.manual
+      ? "Your latest changes are already queued…"
+      : "Autosave already queued…";
+    renderItemStatus(item);
+    return exportQueue;
+  }
+  if (
+    item.exportInFlight &&
+    item.activeExportRevision === item.editRevision
+  ) {
+    item.exportStatus = options.manual
+      ? "Your latest changes are already saving…"
+      : "Autosaving latest changes…";
+    renderItemStatus(item);
+    return exportQueue;
+  }
   item.exportQueueCount = (item.exportQueueCount || 0) + 1;
   item.exportStatus = options.manual
     ? "Manual save queued…"
@@ -4040,6 +4128,7 @@ function queueItemExport(item, options = {}) {
     .then(async () => {
       item.exportQueueCount = Math.max(0, item.exportQueueCount - 1);
       item.exportInFlight = true;
+      item.activeExportRevision = item.editRevision;
       item.exportStatus = options.manual
         ? "Saving your changes…"
         : "Autosaving latest changes…";
@@ -4048,6 +4137,7 @@ function queueItemExport(item, options = {}) {
         return await exportItemToRun(item, options);
       } finally {
         item.exportInFlight = false;
+        item.activeExportRevision = -1;
         renderItemStatus(item);
       }
     });
@@ -4080,9 +4170,21 @@ async function exportItemToRun(
     // two simultaneous full-file uploads for the same image.
     await ensurePreview(item);
     request = captureRedactionRequest(item);
-    const blob = await timedItemStage(item, "redactionMs", () =>
-      createRedactedBlob(item, request),
-    );
+    item.activeExportRevision = request.revision;
+    if (item.redactedPreviewRequest?.revision === request.revision) {
+      try {
+        await item.redactedPreviewRequest.promise;
+      } catch {
+        // Fall through to a fresh render so a transient preview failure does
+        // not prevent the image from being saved.
+      }
+    }
+    const reusablePreview = reusableRedactedPreview(item, request.revision);
+    const blob =
+      reusablePreview ||
+      (await timedItemStage(item, "redactionMs", () =>
+        createRedactedBlob(item, request),
+      ));
     setRedactedPreview(item, blob, request.revision);
     await yieldToUi();
     if (activeRun) {
@@ -4138,6 +4240,7 @@ async function exportItemToRun(
     if (needsResave && item.status === "detected") {
       scheduleItemExport(item);
     }
+    updateButtons();
   }
 }
 
@@ -4161,14 +4264,23 @@ function scheduleAllEditedExports() {
     item.editRevision += 1;
     if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
     item.redactedPreviewUrl = null;
+    item.redactedPreviewBlob = null;
     item.redactedPreviewRevision = -1;
     item.exportStatus = activeRun
       ? "Settings changed · auto-save pending…"
       : "Settings changed · after preview needs refresh";
     renderItemStatus(item);
     updateItemView(item);
+    if (item.viewMode === "after" && isItemVisible(item)) {
+      void ensureRedactedPreview(item).catch((error) => {
+        console.error(error);
+        item.exportStatus = `Preview failed: ${error.message}`;
+        renderItemStatus(item);
+      });
+    }
   }
   scheduleProjectCache();
+  updateButtons();
   if (running) return;
   clearTimeout(settingsExportTimer);
   settingsExportTimer = setTimeout(() => {
@@ -4201,6 +4313,38 @@ async function exportAll() {
     );
     return;
   }
+  await reexportItems(
+    items.filter((item) => item.status === "detected"),
+    {
+      progressVerb: "Re-exporting",
+      completionTitle: "Export complete",
+    },
+  );
+}
+
+function changedSinceLastExportItems() {
+  return items.filter(hasUnexportedChanges);
+}
+
+async function exportChanged() {
+  if (running || !activeRun) return;
+  const targets = changedSinceLastExportItems();
+  if (targets.length === 0) {
+    showProgress("Everything is already up to date.", 100);
+    updateButtons();
+    return;
+  }
+  await reexportItems(targets, {
+    progressVerb: "Re-exporting changed image",
+    completionTitle: "Changed images exported",
+  });
+}
+
+async function reexportItems(
+  targets,
+  { progressVerb = "Re-exporting", completionTitle = "Export complete" } = {},
+) {
+  if (!activeRun || targets.length === 0) return;
   running = true;
   batchOperation = "reexport";
   runState = "running";
@@ -4208,16 +4352,15 @@ async function exportAll() {
   exportStartedAt = performance.now();
   startExportTimer();
   updateButtons();
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (item.status !== "detected") continue;
-    activeIndex = index;
+  for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+    const item = targets[targetIndex];
+    activeIndex = items.indexOf(item);
     await renderCarousel();
     showProgress(
-      `Re-exporting ${index + 1} of ${items.length}: ${item.file.name}`,
-      (index / items.length) * 100,
+      `${progressVerb} ${targetIndex + 1} of ${targets.length}: ${item.file.name}`,
+      (targetIndex / targets.length) * 100,
     );
-    await queueItemExport(item, { updatePreview: true });
+    await queueItemExport(item, { updatePreview: true, manual: true });
     if (!isItemVisible(item)) releasePreview(item);
   }
   lastExportDurationMs = performance.now() - exportStartedAt;
@@ -4228,13 +4371,13 @@ async function exportAll() {
   batchOperation = null;
   activeIndex = firstAttentionIndex();
   showCompletion(
-    "Export complete",
-    `${items.filter((item) => item.exportRevision >= 0).length} redacted image${items.filter((item) => item.exportRevision >= 0).length === 1 ? "" : "s"} saved. Review begins with the first image.`,
+    completionTitle,
+    `${targets.length} redacted image${targets.length === 1 ? "" : "s"} saved. Review begins with the first image.`,
   );
   await renderCarousel();
   updateButtons();
   showProgress(
-    `Export finished in ${formatDuration(lastExportDurationMs)} · ${run.runFolderName}`,
+    `Export finished in ${formatDuration(lastExportDurationMs)} · ${activeRun.runFolderName}`,
     100,
   );
 }
@@ -4928,6 +5071,14 @@ function updateButtons() {
     elements.exportAllButton.textContent =
       `Review ${unreviewedDetectedItems().length} before final export`;
   }
+  const changedItems = changedSinceLastExportItems();
+  elements.exportChangedButton.hidden = !activeRun;
+  elements.exportChangedButton.disabled =
+    !serverReady || batchLocked || changedItems.length === 0;
+  elements.exportChangedButton.textContent =
+    changedItems.length > 0
+      ? `Re-export changed (${changedItems.length})`
+      : "No changes to re-export";
   elements.loadModelButton.disabled =
     !serverReady || Boolean(modelWorkers.length) || batchLocked;
   elements.loadModelButton.hidden =
