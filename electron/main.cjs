@@ -557,7 +557,8 @@ function createMainWindow(url) {
           pageScrollWorks,
           filmstripJoinedToBatchBar,
           reviewUsesDocumentScroll:
-            document.documentElement.scrollHeight > window.innerHeight
+            getComputedStyle(document.body).overflowY === "auto" &&
+            pageScrollWorks
         };
       })()`);
       mainWindow.setSize(1100, 720);
