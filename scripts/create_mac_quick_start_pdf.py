@@ -233,12 +233,23 @@ def build_pdf(output: Path) -> None:
     pdf.drawString(40, 32, url)
     pdf.linkURL(url, (40, 26, 250, 42), relative=0)
 
-    pdf.setFillColor(GRAPHITE)
-    pdf.setFont("Helvetica", 7.5)
+    tutorial_url = (
+        "https://github.com/adammalin/Badge-Blur/releases/download/"
+        "v0.22.1/Badge-Blur-macOS-Tutorial.mp4"
+    )
+    tutorial_label = "WATCH THE VIDEO TUTORIAL  |  1:43"
+    pdf.setFillColor(ENERGY)
+    pdf.setFont("Helvetica-Bold", 8.5)
     pdf.drawRightString(
         572,
         32,
-        "Source install route · No sudo or system-wide Node install required",
+        tutorial_label,
+    )
+    tutorial_width = stringWidth(tutorial_label, "Helvetica-Bold", 8.5)
+    pdf.linkURL(
+        tutorial_url,
+        (572 - tutorial_width, 26, 572, 42),
+        relative=0,
     )
 
     pdf.showPage()

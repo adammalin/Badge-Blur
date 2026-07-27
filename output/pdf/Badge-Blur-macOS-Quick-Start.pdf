@@ -45,7 +45,14 @@ endobj
 endobj
 8 0 obj
 <<
-/Annots [ 7 0 R ] /Contents 12 0 R /MediaBox [ 0 0 612 792 ] /Parent 11 0 R /Resources <<
+/A <<
+/S /URI /Type /Action /URI (https://github.com/adammalin/Badge-Blur/releases/download/v0.22.1/Badge-Blur-macOS-Tutorial.mp4)
+>> /Border [ 0 0 0 ] /Rect [ 418.0225 26 572 42 ] /Subtype /Link /Type /Annot
+>>
+endobj
+9 0 obj
+<<
+/Annots [ 7 0 R 8 0 R ] /Contents 13 0 R /MediaBox [ 0 0 612 792 ] /Parent 12 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ] /XObject <<
 /FormXob.524abc4751ef9fa7098d2c987261f384 4 0 R
 >>
@@ -55,31 +62,31 @@ endobj
 >> /Type /Page
 >>
 endobj
-9 0 obj
-<<
-/PageMode /UseNone /Pages 11 0 R /Type /Catalog
->>
-endobj
 10 0 obj
 <<
-/Author (Badge Blur) /CreationDate (D:20260727162242-04'00') /Creator (anonymous) /Keywords () /ModDate (D:20260727162242-04'00') /Producer (ReportLab PDF Library - \(opensource\)) 
-  /Subject (Selectable Terminal commands for installing and launching Badge Blur on macOS) /Title (Badge Blur macOS Quick Start) /Trapped /False
+/PageMode /UseNone /Pages 12 0 R /Type /Catalog
 >>
 endobj
 11 0 obj
 <<
-/Count 1 /Kids [ 8 0 R ] /Type /Pages
+/Author (Badge Blur) /CreationDate (D:20260727164256-04'00') /Creator (anonymous) /Keywords () /ModDate (D:20260727164256-04'00') /Producer (ReportLab PDF Library - \(opensource\)) 
+  /Subject (Selectable Terminal commands for installing and launching Badge Blur on macOS) /Title (Badge Blur macOS Quick Start) /Trapped /False
 >>
 endobj
 12 0 obj
 <<
-/Filter [ /ASCII85Decode /FlateDecode ] /Length 1834
+/Count 1 /Kids [ 9 0 R ] /Type /Pages
+>>
+endobj
+13 0 obj
+<<
+/Filter [ /ASCII85Decode /FlateDecode ] /Length 1802
 >>
 stream
-Gatm;hf%4>&:WfG(fg<L<s<*;J+np*EfE[X$]`r)nm^qhHtU+[mQ)arFas;5Y3f[:T_'-G@:R;5Zh)Fh1Lkum+%q)2)h?*;#1jVm"JR2ENo<5[JT92W8,2&D?D0eN'_"HkSAOi>cNKIg/>'FIfZJHWdo)LpmA,PV\j6=ND-EXbW,k<r$X5neeo3r%!esK;#ITp\[C,O*n=*e=E<:^MC<oV,1nN_L<c^gP"Q/kpg;*1+g"ccp:1s$u-e"+V?NG&"=490W\A,S##P2UgMuJ7jDhq`gS\D?q!bK<Y%I^M5X#=us#T;ecYTfc18):nd(H>TE&m%N-L:DJkg#dX,%>r[Uc8L9,G!3=cF;^u,$C?%WJQIPUS0dC='?!O83Fl%'1?1^pPoUE8<b9n:kFRD,CSc8u*"98c@<1uEf8OW3Z%_-L-XJ'YmojfN/n<cIK9RWii"OF?g3B,"l[=#D'k\_dnj+;5ZiI7IB(H:GmLYH$"K!ubIm4i@irbu0[E_gJ5qLUq0RX5s*S80/AbhqPGgSD2]6-0!["*u'9if4."XL0sJd%?R]\@8^+r.>T3SRj_3[p;`$3;rA)_[YIdMS*V"Z7E+X,nY:jdLB:X4'==^a%so18EjgBJR)h"rU]EDrs),W.5n_?)3K['WQ.h(L.o[cO<QM<%H^ce02692gc@hclgXoT]<>9mh/hd4K&B)/@&`H<'5qbIi2naU68;aXMA&FB%oN2S8idu3#i!rcO@3FJ@1W<GV^3+G\aB9\ZQ^5TH%GlBd!oomiYA8N,akIFbKT@6A&!k^I?#G;Mr;B0e"B/bPih`qLV^0Tm]Ld1qne=.6!dDD;=@L=XD6`_Q2SN:2e1*&_e']Mc3TXN@rRk^B%JOI<Ae-?n%Y%s7?.LN%0M'[r\[B4G7K/LM4'^_UOQ6f4-&DE]11C6d-C!(T\Ushdq`1lc_]B&!R#RAWA)$=ESk`BiEM8_6;N2pfqC9POB;1f3"N`A*QNkEQ(IPEm&X&)6XV@n*8p40TYVO[#Lud3riLq7t6QXEcOBsiAGod2onJ[QB9+]QQm^/WR44n`N!"(,*6?>ClgMVQ^fl7@5Qi2`<4%+)D1^(1n[9]Jj7E[[Q6Di+A'mT[=&K0o_&Zc/R_=q/e=69Y<u'RYa[Pda1&ql0HJ3+hN+k7o..\p%Z,o`n;iSsNKeKhk,bS&!7Rj;'rG'M$!^7RU[bGOl,e$G##KAXJK1+ad"3"`(B-IKht**,NM'#Yg\[tO=2t0Lf;ke%:`<qp_C8N9!%\9c0.@A`<LKj77oBTbGd^HO.G(!'&1;9oA7'!W99uJtYA#2L==FSH7sUr6fPuK]-peF(H)SAZ=m$$Qk<M],*ObXf1ET-]mp?W0AYI*:"resDW'mhOD)k<t%TI;B6$9=W91[h:eP8>t^=;@lA.$a7^&_EWaZo;&7j^rX)j\nlVq7GrI8!p8B8@iLVPu7LY1da_*Ph<cBm+DSB??c72:`8pdI:c=(Ym?W08QdZhkE20dln8@/5[F`=M5]ag.DJ84gs@N\c_[kJAcW$1OOj=)WJ'P@,[i"ABqUV&E_Xj<d26R@,'_&g&AR)'!$0p<P-D1(3a@T^m.s21`PHr3#gb8n"TW72=Lj<i$):()jY&qK1hMC34f5S&01?Cq\egkQ47]OIu[H8fJQF_@J+NE]\jQWl3])+'Q2sl6EqSL/+A5!NTsS"EhT)@*sa#ViPX=napPSAgDH]_ck9>]1+q>"f`U.K,&5^QBLhlEN'BA8GDufaVQi\sSq8!:hlUUX`nGP0gog%=4)-1CNR)bEC-)iC*9V$q_B$O8VbFRg-R%`O^WfZ6O40-aF-;45In)t$F8~>endstream
+Gatm;D0+E#&H9tYfZEbQRk[6RHM9@7jI-Ab$&CX5nJ<>OW"hATmUVA7Sc8?NSYQ6?&CPfj5shYrp\*9Q?O3%o+o4:R!*ht>]-0Ef6q\Z2@7)l'0^@R@r:!^ad%W-"GQ@u>_X_Qa"I(]u7ia[)AR+M8.H7pC.I*=]mt5&:,]F]F:1.jGipXr,G+_7=n7Z4)(3?Ob2Vndioh.AA_)EA$\S9F1F8UYILU9eF*#G=Yr&UF^+2Ro#o'U*H^'FE<i3%PmT#/P$nG4/!U])P8%ALT[HFnCt`X;C(&^)rb_a[16A69*Tk;faj8W=a5qpMWcC["]$(!.BRi`Tl_Drii)UcFrVp]p2t:9Eb1?E@&7at!t7.Knf`5rYAY?HSL"-3YqV/nA&:!KkO)gpQjd6dU=b'X+s)_6sXs8#LRKpuW6Z)\0:9H")+18XI7Kp<:<Zcm8*DlB7ut`u2,,`tqlu-:01(e0.KeE&4"X,8e-b4@UP4:LNm)d#Z$GTeWt#<hhs;j8,-,P^9c*n4JN"3fOrf`]U.oLGCG(9)0eaiqrij<^+EkaYhpl2K>u50Mcc`FFiX,T]E'`0Yt9hU5<S&,BBkV%>`RbU^9E!k$?'n1_:JmR.>']V;gKJ1,uE@)-p-YjuOed!F%s9OZL?-<+B,B3#8gGoM79CQ/.SP+go*A4;H>\TJ(&qNlqpH9.fOMY7eK,c\c%,nJo-rAXo`X8j8ZJ!cQ&H4`s]K)2F!&_]_kQbWtIr=A)eSb?g7M:W=lJlY9a_P[eN@>"Ab5gPZk&`]-J`3^R*eU#%-9h]h#^.7J1#QkY_(ATne8?,8"^Ug9AqBm^NY;f:6=e%!fmZ:^FJKK$[$NpjjAJ3=W-M\i<s)kEbOD?I2mqW>:_T.$7cs)Yk7N%0M'[r\[B4G73%LM4&3_mCA@?&ssFl"hPb"3_U>(M&QnD6q4RFCl][LPu0m1e10lU^h<"DFb3]r0gm-k:2ZWq0i?bNSMH5VJZO"/&n;0T@fHunHo<sL)9lfnlTd8[dhji#CrlSi:dec7^EEnDpUQ_@PsU_"XtG(?6QW@)LX0AaEgia";VlN%9<qH>F]d=_J!2G<<oHm2-S<"bCCAa$N=]RYggeb!6O6u<86"i"*^@;/VPq0\NE:;T8/pp@5fcgqqHQ&R#^.'&)hYQ4sL>V82LahGB=g>V!R+sB<fG\9V6W3(gm#-E&/OE_TAsY-dtd-5g?\?H>%If$RDZ&r-JR]QRVA@I[q[Kqa4MiN-TQL=&$"MBpe]&:QYYZO:!1<VDu(bj[)*jOufP^[>Z"p\]t>43+8j3qiWR>amqm3f/+(6A;Yud<aMaUFr\7$MUKCe*hl^dCO\kF*,)=Z`O6h6VI;=Yn;>RB$SAeSCnSF3-$kR$QD]Ym"'(h):n=W.&f,?aC8W.Z^=;@lA.$a7^&hKXakuUq7j_O:2JeN<35+IRfZ2K=jUAC^@[[X&jf6jomf944::#Ad5"kmV;F@nf%f4)jT.lahYDB@0hkE21dln8@/5[F`=M5ccg.DJ8$sW7Eh1<0[6"2q$)*YnY%<5NcY].uL1?Xf`KR*9Im&mf3CjZ(7gL$:B@b#@kC0*FCim-lq\C)jn-6_f.POL2P+&,P4J`"9H(Vs9\^FXFG>d?K0fbNFrii!+7cZ%be(:5+^,u20_eMm_feN;%HJm/M\/!)(c\;QOY<V:<8JS-OgW.#Ik/^uTO"/SsFHoQI@=i$Ep.E8;8Zp[o[N6=,!p&OlELg"p,g/5R*j,_LRY@<akL.SAnR_J5\f=)=IL@E6&&<7p&7H;K$gS`d%ae`kA(kp7b.OR7&~>endstream
 endobj
 xref
-0 13
+0 14
 0000000000 65535 f 
 0000000061 00000 n 
 0000000112 00000 n 
@@ -89,20 +96,21 @@ xref
 0000447850 00000 n 
 0000447955 00000 n 
 0000448123 00000 n 
-0000448399 00000 n 
-0000448468 00000 n 
-0000448817 00000 n 
-0000448877 00000 n 
+0000448353 00000 n 
+0000448635 00000 n 
+0000448705 00000 n 
+0000449054 00000 n 
+0000449114 00000 n 
 trailer
 <<
 /ID 
-[<b595e0bb09e4db0a6e5ae6877b5cf1fd><b595e0bb09e4db0a6e5ae6877b5cf1fd>]
+[<8573d4da8e958238eba6a5d593b0802b><8573d4da8e958238eba6a5d593b0802b>]
 % ReportLab generated PDF document -- digest (opensource)
 
-/Info 10 0 R
-/Root 9 0 R
-/Size 13
+/Info 11 0 R
+/Root 10 0 R
+/Size 14
 >>
 startxref
-450803
+451008
 %%EOF
