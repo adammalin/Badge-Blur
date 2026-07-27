@@ -496,8 +496,8 @@ The 0.22.1 source and Apple-silicon Mac candidate passed:
 The locally qualified Mac artifacts are:
 
 ```text
-1dab854508dafd5eb4f22d3778b89d6d8156d53fb077dfb3ae4380b71ab26101  Badge-Blur-Mac-arm64-v0.22.1.dmg
-f6bdeb549c7f89aa94fafa11f5f14d58fe376afbd26ec4f831ac8dac1db30d95  Badge-Blur-Mac-arm64-v0.22.1.zip
+c2efd15fe98c1e4936898fd3a5910e75c48256ecdc953ef23e2646da2f5b0705  Badge-Blur-Mac-arm64-v0.22.1.dmg
+831d318330ac72d1deb3e7711b465839f1af1239ea211ad34418d9237d8ba983  Badge-Blur-Mac-arm64-v0.22.1.zip
 ```
 
 The Windows x64 candidate remains pending the matched-platform release CI job.

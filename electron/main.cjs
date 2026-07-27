@@ -492,7 +492,11 @@ function createMainWindow(url) {
         const pageScrollWorks = window.scrollY > 0;
         const filmstripJoinedToBatchBar =
           filmstrip?.parentElement?.classList.contains("batch-dock") === true;
-        document.querySelector("#outputFormatInput").value = "jpeg";
+        const outputFormatInput = document.querySelector("#outputFormatInput");
+        outputFormatInput.value = "jpeg";
+        outputFormatInput.dispatchEvent(
+          new Event("change", { bubbles: true })
+        );
         document.querySelector(".export-one")?.click();
         const manualSaveQueuedState = smoke.state();
         const manualSaveFeedback =
