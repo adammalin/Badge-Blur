@@ -13,7 +13,12 @@ from reportlab.pdfgen import canvas
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "output" / "pdf" / "Badge-Blur-macOS-Quick-Start.pdf"
 DESKTOP_OUTPUT = Path.home() / "Desktop" / OUTPUT.name
-ICON = ROOT / "public" / "badge-blur.png"
+TUTORIAL_THUMBNAIL = ROOT / "public" / "badge-blur-tutorial-thumbnail.jpg"
+TUTORIAL_URL = (
+    "https://www.dropbox.com/scl/fi/nlzfipl1kc16kqm6aln11/"
+    "Badge-Blur-macOS-Tutorial.mp4"
+    "?rlkey=9ehmhajx31dlwflaxflth6gb8&dl=0"
+)
 
 PAGE_W, PAGE_H = letter
 
@@ -109,15 +114,46 @@ def build_pdf(output: Path) -> None:
     pdf.setFont("Helvetica", 11.5)
     pdf.drawString(40, 654, "Badge Blur runs locally after its first-time setup.")
 
-    icon_size = 116
+    thumbnail_x = 382
+    thumbnail_y = 660
+    thumbnail_width = 190
+    thumbnail_height = 95
+    pdf.setStrokeColor(white)
+    pdf.setLineWidth(1.2)
+    pdf.rect(
+        thumbnail_x,
+        thumbnail_y,
+        thumbnail_width,
+        thumbnail_height,
+        stroke=1,
+        fill=0,
+    )
     pdf.drawImage(
-        ImageReader(str(ICON)),
-        442,
-        641,
-        width=icon_size,
-        height=icon_size,
+        ImageReader(str(TUTORIAL_THUMBNAIL)),
+        thumbnail_x,
+        thumbnail_y,
+        width=thumbnail_width,
+        height=thumbnail_height,
         preserveAspectRatio=True,
-        mask="auto",
+    )
+    pdf.linkURL(
+        TUTORIAL_URL,
+        (thumbnail_x, thumbnail_y, thumbnail_x + thumbnail_width, thumbnail_y + thumbnail_height),
+        relative=0,
+    )
+    pdf.setFillColor(white)
+    pdf.setFont("Helvetica-Bold", 8.5)
+    header_tutorial_label = "WATCH THE TUTORIAL  |  1:43"
+    pdf.drawRightString(572, 646, header_tutorial_label)
+    header_tutorial_width = stringWidth(
+        header_tutorial_label,
+        "Helvetica-Bold",
+        8.5,
+    )
+    pdf.linkURL(
+        TUTORIAL_URL,
+        (572 - header_tutorial_width, 640, 572, 654),
+        relative=0,
     )
 
     # First install / update.
@@ -233,10 +269,6 @@ def build_pdf(output: Path) -> None:
     pdf.drawString(40, 32, url)
     pdf.linkURL(url, (40, 26, 250, 42), relative=0)
 
-    tutorial_url = (
-        "https://github.com/adammalin/Badge-Blur/releases/download/"
-        "v0.22.1/Badge-Blur-macOS-Tutorial.mp4"
-    )
     tutorial_label = "WATCH THE VIDEO TUTORIAL  |  1:43"
     pdf.setFillColor(ENERGY)
     pdf.setFont("Helvetica-Bold", 8.5)
@@ -247,7 +279,7 @@ def build_pdf(output: Path) -> None:
     )
     tutorial_width = stringWidth(tutorial_label, "Helvetica-Bold", 8.5)
     pdf.linkURL(
-        tutorial_url,
+        TUTORIAL_URL,
         (572 - tutorial_width, 26, 572, 42),
         relative=0,
     )

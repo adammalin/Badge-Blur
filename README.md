@@ -10,10 +10,16 @@ changing the original images.
 
 ## Video tutorial and Mac quick start
 
-- [Watch or download the 1 minute 43 second tutorial video](https://github.com/adammalin/Badge-Blur/releases/download/v0.22.1/Badge-Blur-macOS-Tutorial.mp4)
+- [Watch the 1 minute 43 second tutorial video in your browser](https://www.dropbox.com/scl/fi/nlzfipl1kc16kqm6aln11/Badge-Blur-macOS-Tutorial.mp4?rlkey=9ehmhajx31dlwflaxflth6gb8&dl=0)
 - [Download the selectable-text macOS installation flyer](output/pdf/Badge-Blur-macOS-Quick-Start.pdf)
 - [Browse the editable HyperFrames tutorial source](videos/badge-blur-tutorial)
 - [Download the complete source bundle and original 4K captures from the v0.22.1 Release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.22.1)
+
+<p align="center">
+  <a href="https://www.dropbox.com/scl/fi/nlzfipl1kc16kqm6aln11/Badge-Blur-macOS-Tutorial.mp4?rlkey=9ehmhajx31dlwflaxflth6gb8&amp;dl=0">
+    <img src="public/badge-blur-tutorial-thumbnail.jpg" alt="Watch the Badge Blur tutorial video" width="720">
+  </a>
+</p>
 
 The finished video and multipart full-source archive are hosted as GitHub
 Release assets so normal repository clones stay reasonably small. The editable
