@@ -16,8 +16,8 @@ const children = new Set();
 
 function ensureBuiltApp() {
   if (existsSync(path.join(projectRoot, "dist", "index.html"))) return;
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCommand, ["run", "build"], {
+  const viteCli = path.join(projectRoot, "node_modules", "vite", "bin", "vite.js");
+  const result = spawnSync(process.execPath, [viteCli, "build"], {
     cwd: projectRoot,
     env: process.env,
     stdio: "inherit",
