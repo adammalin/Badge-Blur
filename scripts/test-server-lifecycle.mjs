@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -6,11 +7,26 @@ import path from "node:path";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const serverScript = path.join(projectRoot, "scripts", "serve.mjs");
+ensureBuiltApp();
 const temporaryRoot = await mkdtemp(
   path.join(tmpdir(), "badge-blur-lifecycle-test-"),
 );
 const pidFile = path.join(temporaryRoot, "server.pid");
 const children = new Set();
+
+function ensureBuiltApp() {
+  if (existsSync(path.join(projectRoot, "dist", "index.html"))) return;
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const result = spawnSync(npmCommand, ["run", "build"], {
+    cwd: projectRoot,
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`Could not build the app for lifecycle testing (${result.status}).`);
+  }
+}
 
 try {
   const first = await startServer({
