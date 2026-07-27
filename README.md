@@ -71,42 +71,80 @@ verify it and obtain any missing small files.
 
 1. Select a folder of JPEG, PNG, 8-bit single-page TIFF, WebP, AVIF, or
    HEIC/HEIF images.
-2. Wait for the bundled local models to load automatically.
-3. Choose **Start batch**.
-4. To stop claiming new images without losing progress, choose **Pause after
+2. Choose the output format for this batch: match each source, JPEG, PNG,
+   TIFF, or WebP. The default destination remains a new unique run folder
+   nested under the source folder's `exports` directory.
+3. Wait for the bundled local models to load automatically.
+4. Choose **Start batch**.
+5. To stop claiming new images without losing progress, choose **Pause after
    active images**. Active images finish and save before the batch enters its
    paused state. Choose **Resume batch** to continue in the same run folder;
    already completed images are skipped.
-5. Grounding DINO runs one period-delimited grounding prompt over each image.
-6. With **Enhanced detection and filtering** enabled, the app detects people
-   first. When people are found, full-image candidates outside every verified
-   torso are rejected before CLIP checks ambiguous candidates; the same torso
-   regions are then searched for missed badges.
-7. The local corner fitter refines strong badge edges and keeps a rectangle
+6. Grounding DINO runs one period-delimited grounding prompt over each image.
+7. With **Enhanced detection and filtering** enabled, the app detects people
+   first and associates each retained badge with one person. For a person
+   without a badge, it runs a targeted high-resolution torso pass, detects
+   lanyards separately, and lowers the badge threshold only along the
+   neck-to-waist/lanyard path. CLIP still rejects likely clothing details,
+   signs, patches, and equipment labels.
+8. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
-8. Review the active image in the large viewer. Click or horizontally scroll
+9. Review the active image in the large viewer. Click or horizontally scroll
    the thumbnail filmstrip, use Previous/Next, or press the left/right arrow
-   keys to move through the batch. The filmstrip labels each image as Waiting,
-   Processing, Saving, Done, Ready for review, or Needs attention. Navigation
-   remains available while other images are processing; mask editing stays
-   read-only until the active processing pass is safe.
-9. Drag over a missed badge to add a mask.
-10. Click a mask and drag its four corner handles to match badge perspective.
-11. Open **Advanced settings** only when you need to change detection,
+   keys to move through the batch. Use **Fit in window** to see the complete
+   frame or **Fill width** for a centered, width-filling inspection view. The
+   Fill width and zoomed views expand the photo stage vertically so the whole
+   review page scrolls instead of trapping the image in a short inner box.
+   Use the `+`/`−` controls, Command/Control-scroll, or double-click to zoom;
+   hold Space and drag to pan.
+   The selected sizing mode is remembered across images and app launches. The
+   filmstrip is joined to the batch workflow rail and labels each image as
+   Waiting, Processing, Saving, Saved/review pending, Reviewed, or Needs
+   attention. Navigation and edits to completed images remain available while
+   other images process; only an image currently being detected is read-only.
+10. Drag over a missed badge to add a mask.
+11. Click a mask and drag its four corner handles to match badge perspective.
+12. With a badge mask selected, adjust **Selected badge blur** when that one
+    badge needs more or less redaction than the batch default. The override is
+    stored on that reviewed mask in the run data.
+13. Open **Advanced settings** only when you need to change detection,
     Gaussian blur strength, mask expansion, edge feather, or parallel
     processing.
-12. Click a false mask and use **Remove selected** or the Delete key.
-13. Toggle **Before · edit masks** and **After · exported** to compare the
-    current mask with its redacted output.
+14. Click a false mask and use **Remove** in the badge inspector or the Delete
+    key. The inspector identifies **Badge N of N**, controls its saved blur
+    override, and provides **Reset blur**.
+15. Toggle **Before · edit masks** and **After · redacted** to compare the
+    current mask with its redacted output. Badge Blur prepares the After view
+    during automatic processing and saving, so unchanged images do not need a
+    second redaction pass during review.
+16. Choose **Save, review & next** after inspecting a photo. Badge Blur records
+    the review, queues its latest output and run data for saving, then moves to
+    the next unreviewed ready image. Use **Save only** when you want to persist
+    an edit without marking the image reviewed or advancing.
+17. **All images ready for review** is the normal neutral state. Use the
+    flagged-issue queue only for processing failures or an implausibly large
+    automatic mask. Visible people and lanyards do not imply that a badge
+    should be present. Confirm every processed image before final export.
 
-When processing finishes, Badge Blur returns to the first image and shows a
-green completion banner. In the Electron app, choose **Open export folder** to
-open the completed run in Finder or File Explorer. Source-based exports open
-directly; a custom destination may ask you to confirm the exact run folder
-once if Electron cannot recover its native path. The Start/Pause/Export
-controls and live progress remain attached to the bottom of the window while
-you scroll. The header's half-circle control switches between light and dark
-themes.
+Keyboard review shortcuts are: left/right (or K/J) for navigation, N for the
+next flagged issue, V for Before/After, M to focus mask editing, Delete to
+remove the selected mask, R to save/review/advance, P to pause or resume a
+batch, Command/Control with `+`, `−`, or scroll to zoom, and Space-drag to pan.
+
+When processing finishes, Badge Blur opens the first flagged issue (or the
+first image when there are no issues) and shows a green
+processing-complete banner. Progressive redacted copies remain safely saved,
+but **Export all/Re-export all** requires explicit review confirmation for
+each processed image. The summary and run manifest record reviewed images,
+unresolved warnings, masks added or removed, and corner adjustments. In the
+Electron app, choose **Open export folder** to open the completed run in Finder
+or File Explorer. Source-based exports open directly; a custom destination may
+ask you to confirm the exact run folder once if Electron cannot recover its
+native path. The Start/Pause/Export controls and live progress remain attached
+to the bottom of the window while you scroll. Elapsed processing time is
+right-aligned beside the finished, active, and worker counts below the
+progress bar, then remains visible as the final total. The header's
+half-circle control switches between light and dark themes.
 
 The default redaction is a smooth Gaussian blur sized to 3% of the badge's
 shorter edge. The Advanced settings panel can increase or decrease that
@@ -114,12 +152,13 @@ strength or switch to the optional pixelated mosaic style. Changing a
 redaction setting refreshes and re-saves completed outputs in the active run.
 
 Parallel processing defaults to **Auto**. The app uses logical-processor and
-runtime memory signals plus a short local compute benchmark to select one, two,
-or four detector workers conservatively. Manual 1/2/4 choices are available
-for controlled testing. Each worker owns a separate Grounding DINO and CLIP
-session; each session uses a bounded thread count so logical-processor capacity
-remains available for scrolling and review. Final files and manifests are still
-written one at a time.
+runtime memory signals plus a short local compute benchmark to select one or
+two detector workers conservatively. Manual 1/2/4 choices are available for
+controlled testing. Four workers remain manual because the measured local
+benchmark showed no gain over two. Each worker owns a separate Grounding DINO
+and CLIP session; each session uses a bounded thread count so
+logical-processor capacity remains available for scrolling and review. Final
+files and manifests are still written one at a time.
 
 Each processed image is saved progressively into
 `source-folder/exports/badge-remover-run-YYYYMMDD-HHMMSS-xxxxxxxx` by default.
@@ -183,13 +222,15 @@ The COCO file records final reviewed quadrilaterals and COCO bounding boxes for
 later local model training; it does not train or alter the bundled model during
 use.
 
-JPEG, PNG, TIFF, WebP, and AVIF retain their format. HEIC/HEIF input is
-exported as TIFF with `-redacted-from-heic` or `-redacted-from-heif` in its
-name because portable HEIC encoding is not included. Writable EXIF, IPTC, XMP,
-copyright, camera, and ICC-profile metadata is transferred. Orientation is
-normalized after pixels are rotated. Embedded thumbnails and previews are
-intentionally excluded because they could contain the original visible badge.
-The MIE archive preserves the remaining source metadata for audit/recovery.
+The **Match original** output option retains JPEG, PNG, TIFF, WebP, and AVIF
+formats. The reviewer can instead choose JPEG, PNG, TIFF, or WebP for every
+redacted copy in the run. HEIC/HEIF input uses TIFF with
+`-redacted-from-heic` or `-redacted-from-heif` when matching the source because
+portable HEIC encoding is not included. Writable EXIF, IPTC, XMP, copyright,
+camera, and ICC-profile metadata is transferred. Orientation is normalized
+after pixels are rotated. Embedded thumbnails and previews are intentionally
+excluded because they could contain the original visible badge. The MIE
+archive preserves the remaining source metadata for audit/recovery.
 
 ## Local-only controls
 
@@ -442,11 +483,30 @@ The unsigned Windows installer can similarly trigger SmartScreen. Installer
 format and system icons do not bypass either security system. Managed computers
 may require normal organizational approval or software distribution.
 
+Release infrastructure supports organization-controlled signing credentials
+without storing them in the repository:
+
+- Set `MACOS_SIGNING_ENABLED=1` after installing a Developer ID Application
+  certificate in the build keychain. Notarization accepts either
+  `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`, or `APPLE_ID`,
+  `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`.
+- Set `WINDOWS_CERTIFICATE_FILE` and `WINDOWS_CERTIFICATE_PASSWORD` to sign the
+  Squirrel.Windows installer with an Authenticode PFX certificate.
+
+Without those credentials, packaging deliberately retains the documented
+ad-hoc Mac signature and unsigned Windows fallback for controlled testing.
+
+The rounded interface corners and icon-derived green/sage/silver palette in
+0.22.0 are a product-direction exception to the stricter square-corner ORNL
+brand default. Treat the interface as a draft pending the appropriate brand
+review for an official lab-wide release.
+
 ## MVP limitations
 
 - Human review is required.
-- Enhanced mode on the reviewed 18-image local regression currently measures
-  75.6% automatic badge recall and 81.0% mask precision. It is useful as a first-pass reviewer,
+- The torso-gated enhanced path on the reviewed 18-image local regression
+  currently measures 75.6% automatic badge recall and 89.5% mask precision.
+  It is useful as a first-pass reviewer,
   not as an unattended compliance control. White/translucent cards and distant
   small badges remain the main miss cases.
 - Automatic detections begin with an angle-aware four-corner edge fit.
@@ -473,8 +533,9 @@ may require normal organizational approval or software distribution.
   on rescue candidates. Turn it off for the faster v0.9-style full-image pass.
 - More detector workers are not guaranteed to scale linearly because each
   ONNX session competes for CPU and memory bandwidth. On the development
-  workstation, two model workers were 1.04× faster than one on the four-image
-  detector benchmark; pipeline overlap can provide additional batch benefit.
+  workstation, two model workers were 1.02× faster than one on the four-image
+  detector benchmark, while four were slightly slower; pipeline overlap can
+  provide additional batch benefit.
 - Four-worker mode is intentionally marked as high-memory and should be
   qualified on the actual Windows or Mac workstation before large batches.
 - RAW files, multi-page images, and images above 8 bits per channel are

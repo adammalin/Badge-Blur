@@ -1,6 +1,75 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 — 2026-07-27
+
+- Add a selected-mask blur-strength slider with per-mask persistence in
+  manifests, checkpoints, project-cache snapshots, and training annotations.
+- Generate and retain each redacted After view during automatic processing and
+  saving, avoiding a second redaction pass when reviewers switch views.
+- Let Fit use a generous photo stage and make Fill/zoom expand that stage in
+  the document, so the entire review page scrolls instead of a short inner box.
+- Allow normal mouse-wheel and trackpad movement over the photo to scroll the
+  review document; only modified wheel gestures are captured for photo zoom.
+- Keep fitted photos geometrically centered in the available viewer width and
+  pin the page accent gradient so it never tiles as the review page grows.
+- Recalculate the viewer after the setup-to-review paint so the first photo is
+  centered immediately when a batch starts, without requiring navigation.
+- Add cursor-centered stepped zoom, Command/Control-scroll zoom, double-click
+  zoom, and Space-drag hand-tool panning while preserving Fit and Fill modes.
+- Join the filmstrip and batch actions into one in-flow lower work rail that
+  never overlays or hides the photo.
+- Clarify review hierarchy with labeled Preview and Size toggles, actionable
+  image/review/badge progress, a selection-aware Badge N of N inspector,
+  stronger selected-mask styling, contextual blur reset/removal, clearer
+  photo-action labels, and clear view controls.
+- Move image-review confirmation into the centered photo toolbar and add a
+  high-contrast white/green active frame around the selected filmstrip image.
+- Make review confirmation a **Save, review & next** action that persists the
+  latest image/run state and advances to the next unreviewed ready image.
+  Keep a separate **Save only** action for edits that should not advance.
+- Use a calm **All images ready for review** state without a caution icon or
+  yellow treatment; reserve **Attention needed** for processing failures and
+  clearly implausible automatic masks.
+- Never infer that every visible person or lanyard should have a badge, and
+  remove missing-badge-per-person warnings from the UI and saved summary.
+- Improve automatic corner fitting with full-color edge contrast,
+  detector-edge proximity scoring, and tighter protected coverage so loose
+  detections can follow badge corners more closely without sacrificing safety.
+- Require every automatic global badge candidate to overlap a detected
+  chest-to-waist torso region; the corrected 18-photo regression retains 75.6%
+  recall while reducing false masks from eight to four and raising precision
+  from 81.0% to 89.5%.
+- Allow mask selection, corner edits, blur changes, removal, review
+  confirmation, and per-image save while other images continue processing.
+- Speed repeat saves by caching source metadata, writing its sidecar once per
+  run, and retaining the generated in-memory preview instead of rereading the
+  full saved image.
+- Ask for the output format immediately after source-folder selection, with
+  choices for matching the source, JPEG, PNG, TIFF, or WebP. The default
+  nested export destination is unchanged, and matching HEIC/HEIF sources
+  continues to use the safe TIFF fallback.
+- Reuse each full-resolution source through a bounded local-service cache and
+  decode it only once during redaction; process independent mask patches in
+  parallel without changing their final compositing order.
+- Restore a live elapsed processing timer, right-aligned beside the finished,
+  active, and worker counts below the progress bar, and retain the final total
+  when the batch completes.
+- Record per-image stage timings in checkpoints and manifests to make future
+  performance tuning measurable. Auto worker selection now caps at the
+  measured two-worker optimum; four workers remain available manually.
+- Reintroduce restrained rounded corners and tune primary UI greens, neutrals,
+  selected states, and soft surfaces to better match the Badge Blur app icon.
+- Scope the Delete/Backspace shortcut to the active image and add
+  keyboard-operable previous/next badge selection in the inspector.
+- Add one deterministic 20-test command to both installer jobs and extend the
+  Electron smoke through review navigation, per-badge blur, scoped deletion,
+  page-expanding Fill/zoom, document scrolling, source caching, selectable
+  JPEG export, and timer alignment.
+- Override vulnerable build-only transitive packages with their patched
+  releases; runtime and complete npm audits report zero known vulnerabilities.
+- Prepare optional certificate-backed macOS signing/notarization and Windows
+  installer signing while retaining the documented ad-hoc/unsigned fallback
+  when organization-controlled credentials are unavailable.
 
 ## 0.21.0 — 2026-07-24
 

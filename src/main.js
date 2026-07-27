@@ -1,4 +1,3 @@
-import { env, pipeline } from "@huggingface/transformers";
 import {
   CLASSIFIER_LABELS,
   CLASSIFIER_MARGIN,
@@ -8,6 +7,9 @@ import {
   GLOBAL_CLASSIFIER_MAX_SCORE,
   GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
   GLOBAL_CLASSIFIER_REJECT_MARGIN,
+  LANYARD_BADGE_THRESHOLD,
+  LANYARD_PROMPT,
+  LANYARD_THRESHOLD,
   MODEL_ID,
   PERSON_THRESHOLD,
   TORSO_THRESHOLD,
@@ -44,8 +46,9 @@ import {
 import { runWorkerPool } from "./worker-pool.js";
 import { maskDeleteControlCenter } from "./mask-controls.js";
 import {
-  candidateLooksLikeCroppedForeground,
+  candidateCenterInsideRegion,
   candidateInsideTorso,
+  lanyardBadgeSearchRegion,
   torsoRegionForPerson,
 } from "./person-guidance.js";
 import {
@@ -56,9 +59,40 @@ import {
   validateRunImport,
   validateSourceSelection,
 } from "./run-import.js";
+import {
+  assessReviewAttention,
+  associateBadgesToPeople,
+} from "./review-attention.js";
+import {
+  applyForCurrentEditRevision,
+  isCurrentEditRevision,
+} from "./edit-revisions.js";
+import { createModelWorker } from "./model-worker-client.js";
+import {
+  MAX_REDACTION_STRENGTH,
+  MIN_REDACTION_STRENGTH,
+  normalizeRedactionStrength,
+  redactionStrengthRecord,
+  resolveRedactionStrength,
+} from "../shared/redaction-strength.js";
+import {
+  exportExtension,
+  normalizeExportFormat,
+  resolveExportFormat,
+} from "../shared/export-format.js";
+import {
+  adjacentBadgeId,
+  reviewProgressSummary,
+  selectedBadgePosition,
+} from "./review-ui.js";
+import {
+  continuousViewZoom,
+  fittedImageSize,
+  steppedViewZoom,
+} from "./view-transform.js";
 
-const APP_VERSION = "0.21.0";
-const IMAGE_API_VERSION = 6;
+const APP_VERSION = "0.22.0";
+const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -73,18 +107,16 @@ const SUPPORTED_EXTENSIONS = new Set([
 const CAROUSEL_RADIUS = 2;
 const PROJECT_CACHE_DOCUMENT_TYPE = "badge-blur-active-project";
 const PROJECT_CACHE_SCHEMA_VERSION = 1;
+const VIEW_SCALE_STORAGE_KEY = "badge-blur-view-scale";
 const INFERENCE_THREADS_PER_WORKER = Math.max(
   1,
-  Math.min(3, (navigator.hardwareConcurrency || 4) - 2),
+  Math.min(2, (navigator.hardwareConcurrency || 4) - 4),
 );
 
-env.localModelPath = "/models/";
-env.allowRemoteModels = false;
-env.allowLocalModels = true;
-env.backends.onnx.wasm.wasmPaths = "/vendor/onnx/";
-env.backends.onnx.wasm.numThreads = INFERENCE_THREADS_PER_WORKER;
-
 const elements = {
+  setupPanel: document.querySelector("#setupPanel"),
+  reviewSection: document.querySelector("#reviewSection"),
+  backToSetupButton: document.querySelector("#backToSetupButton"),
   chooseSourceButton: document.querySelector("#chooseSourceButton"),
   folderInput: document.querySelector("#folderInput"),
   sourceFolderLabel: document.querySelector("#sourceFolderLabel"),
@@ -96,6 +128,8 @@ const elements = {
   paddingOutput: document.querySelector("#paddingOutput"),
   redactionStyleInput: document.querySelector("#redactionStyleInput"),
   redactionStyleHelp: document.querySelector("#redactionStyleHelp"),
+  outputFormatChoice: document.querySelector("#outputFormatChoice"),
+  outputFormatInput: document.querySelector("#outputFormatInput"),
   strengthInput: document.querySelector("#strengthInput"),
   strengthLabel: document.querySelector("#strengthLabel"),
   strengthOutput: document.querySelector("#strengthOutput"),
@@ -122,6 +156,7 @@ const elements = {
   progressWrap: document.querySelector("#progressWrap"),
   progressBar: document.querySelector("#progressBar"),
   progressText: document.querySelector("#progressText"),
+  progressTimer: document.querySelector("#progressTimer"),
   exportCompatibility: document.querySelector("#exportCompatibility"),
   summaryText: document.querySelector("#summaryText"),
   emptyState: document.querySelector("#emptyState"),
@@ -134,6 +169,7 @@ const elements = {
   completionBanner: document.querySelector("#completionBanner"),
   completionText: document.querySelector("#completionText"),
   openExportFolderButton: document.querySelector("#openExportFolderButton"),
+  attentionQueueButton: document.querySelector("#attentionQueueButton"),
   themeToggleButton: document.querySelector("#themeToggleButton"),
   quitAppButton: document.querySelector("#quitAppButton"),
   quitDialog: document.querySelector("#quitDialog"),
@@ -174,6 +210,9 @@ let cachedProject = null;
 let projectCacheLoaded = false;
 let restoringCachedProject = false;
 let projectCacheTimer = null;
+let defaultViewScaleMode = readViewScaleMode();
+let spacePanning = false;
+const sourceRegistrationState = new WeakMap();
 
 elements.thresholdInput.addEventListener("input", () => {
   elements.thresholdOutput.value = Number(elements.thresholdInput.value).toFixed(2);
@@ -200,6 +239,15 @@ elements.redactionStyleInput.addEventListener("change", () => {
   updateRedactionStyleUI();
   scheduleAllEditedExports();
 });
+elements.outputFormatInput.addEventListener("change", () => {
+  if (!elements.outputFormatInput.value) return;
+  elements.outputFormatInput.value = normalizeExportFormat(
+    elements.outputFormatInput.value,
+  );
+  elements.outputFormatChoice.classList.remove("needs-choice");
+  scheduleAllEditedExports();
+  updateButtons();
+});
 elements.workerCountInput.addEventListener("change", updateWorkerCountUI);
 for (const input of [
   elements.labelsInput,
@@ -207,6 +255,7 @@ for (const input of [
   elements.thresholdInput,
   elements.paddingInput,
   elements.redactionStyleInput,
+  elements.outputFormatInput,
   elements.strengthInput,
   elements.featherInput,
   elements.workerCountInput,
@@ -216,13 +265,22 @@ for (const input of [
 elements.chooseSourceButton.addEventListener("click", chooseSourceFolder);
 elements.folderInput.addEventListener("change", loadSelectedFiles);
 elements.loadModelButton.addEventListener("click", loadModel);
-elements.runAllButton.addEventListener("click", () => void startBatch());
+elements.runAllButton.addEventListener("click", () => {
+  setWorkflowStage("review");
+  void startBatch();
+});
+elements.backToSetupButton.addEventListener("click", () => {
+  if (!running) setWorkflowStage("setup");
+});
 elements.pauseResumeButton.addEventListener("click", () => {
   if (running) requestPause();
   else if (batchPaused) void startBatch();
 });
 elements.exportAllButton.addEventListener("click", exportAll);
 elements.openExportFolderButton.addEventListener("click", openExportFolder);
+elements.attentionQueueButton.addEventListener("click", () => {
+  void goToNextAttentionItem();
+});
 elements.themeToggleButton.addEventListener("click", toggleTheme);
 elements.changeExportButton.addEventListener("click", chooseCustomExportFolder);
 elements.resetExportButton.addEventListener("click", useSourceExportFolder);
@@ -246,26 +304,108 @@ document.addEventListener("keydown", (event) => {
   ) {
     return;
   }
+  const activeItem = items[activeIndex];
   if (
-    (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+    (event.metaKey || event.ctrlKey) &&
+    ["=", "+", "-", "_", "0"].includes(event.key)
+  ) {
+    event.preventDefault();
+    if (event.key === "0") setViewScaleMode(activeItem, "fit");
+    else stepItemZoom(activeItem, event.key === "-" || event.key === "_" ? -1 : 1);
+    return;
+  }
+  if (event.code === "Space" && activeItem && !elements.quitDialog.open) {
+    event.preventDefault();
+    spacePanning = true;
+    document
+      .querySelector(`[data-item-id="${activeItem.id}"] .canvas-wrap`)
+      ?.classList.add("is-hand-tool");
+    return;
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || elements.quitDialog.open) {
+    return;
+  }
+  if (
+    (event.key === "ArrowLeft" ||
+      event.key === "ArrowRight" ||
+      event.key.toLowerCase() === "j" ||
+      event.key.toLowerCase() === "k") &&
     items.length > 1
   ) {
     event.preventDefault();
-    void changeCarousel(event.key === "ArrowLeft" ? -1 : 1);
+    void changeCarousel(
+      event.key === "ArrowLeft" || event.key.toLowerCase() === "k" ? -1 : 1,
+    );
     return;
   }
-  if (event.key !== "Delete" && event.key !== "Backspace") return;
-  if (running) return;
-  const selected = items.find((item) => item.selectedBoxId);
-  if (selected) {
+  const key = event.key.toLowerCase();
+  if (key === "n") {
     event.preventDefault();
-    removeSelectedBox(selected);
+    void goToNextAttentionItem();
+    return;
+  }
+  if (key === "v" && activeItem?.status === "detected") {
+    event.preventDefault();
+    void setItemView(
+      activeItem,
+      activeItem.viewMode === "after" ? "before" : "after",
+    );
+    return;
+  }
+  if (key === "m" && activeItem && !activeItem.processing) {
+    event.preventDefault();
+    void setItemView(activeItem, "before");
+    document
+      .querySelector(`[data-item-id="${activeItem.id}"] canvas`)
+      ?.focus();
+    setCurrentImageReviewMessage("Mask edit mode · drag across a missed badge.");
+    return;
+  }
+  if (key === "r") {
+    event.preventDefault();
+    void toggleActiveItemReviewed();
+    return;
+  }
+  if (key === "p") {
+    if (running) {
+      event.preventDefault();
+      requestPause();
+    } else if (batchPaused) {
+      event.preventDefault();
+      void startBatch();
+    }
+    return;
+  }
+  if (event.key === "Delete" || event.key === "Backspace") {
+    const activeItem = items[activeIndex];
+    if (activeItem?.selectedBoxId && !activeItem.processing) {
+      event.preventDefault();
+      removeSelectedBox(activeItem);
+    }
+  }
+});
+document.addEventListener("keyup", (event) => {
+  if (event.code !== "Space") return;
+  spacePanning = false;
+  for (const viewer of document.querySelectorAll(".canvas-wrap")) {
+    viewer.classList.remove("is-hand-tool", "is-panning");
   }
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") void persistProjectCache();
 });
+window.addEventListener("resize", () => {
+  requestAnimationFrame(refreshViewerLayouts);
+});
+if (new URLSearchParams(window.location.search).get("smoke") === "1") {
+  window.__badgeBlurReviewSmoke = Object.freeze({
+    loadFixture: loadReviewSmokeFixture,
+    state: reviewSmokeState,
+    simulateOtherImageProcessing,
+  });
+}
 initializeTheme();
+setWorkflowStage("setup", { focus: false });
 updateButtons();
 updateRedactionStyleUI();
 updateWorkerCountUI();
@@ -305,6 +445,302 @@ function applyTheme(theme) {
   const label = dark ? "Use light mode" : "Use dark mode";
   elements.themeToggleButton.setAttribute("aria-label", label);
   elements.themeToggleButton.title = label;
+}
+
+function readViewScaleMode() {
+  try {
+    return localStorage.getItem(VIEW_SCALE_STORAGE_KEY) === "fill"
+      ? "fill"
+      : "fit";
+  } catch {
+    return "fit";
+  }
+}
+
+function setViewScaleMode(item, mode) {
+  if (!item) return;
+  const normalizedMode = mode === "fill" ? "fill" : "fit";
+  item.viewScaleMode = normalizedMode;
+  item.viewZoom = 1;
+  defaultViewScaleMode = normalizedMode;
+  try {
+    localStorage.setItem(VIEW_SCALE_STORAGE_KEY, defaultViewScaleMode);
+  } catch {
+    // The selected view still applies for the current session.
+  }
+  const card = document.querySelector(`[data-item-id="${item.id}"]`);
+  if (!card) return;
+  updateViewScaleControls(card, item);
+  const viewer = card.querySelector(".canvas-wrap");
+  if (viewer) {
+    viewer.scrollTop = 0;
+    viewer.scrollLeft = 0;
+  }
+  requestAnimationFrame(() => updateViewerLayout(card, item));
+}
+
+function updateViewScaleControls(card, item) {
+  const mode = item?.viewScaleMode || defaultViewScaleMode;
+  const fillWidth = mode === "fill";
+  const fitted = mode === "fit";
+  card.dataset.viewScale = mode;
+  const fitButton = card.querySelector(".fit-view");
+  const fillButton = card.querySelector(".fill-view");
+  const zoomLevel = card.querySelector(".zoom-level");
+  if (!fitButton || !fillButton || !zoomLevel) return;
+  fitButton.classList.toggle("is-selected", fitted);
+  fillButton.classList.toggle("is-selected", fillWidth);
+  fitButton.setAttribute("aria-pressed", String(fitted));
+  fillButton.setAttribute("aria-pressed", String(fillWidth));
+  zoomLevel.textContent =
+    mode === "zoom"
+      ? `${Math.round(item.viewZoom * 100)}%`
+      : mode === "fill"
+        ? "Fill"
+        : "Fit";
+  zoomLevel.setAttribute(
+    "aria-label",
+    mode === "zoom"
+      ? `Zoom ${Math.round(item.viewZoom * 100)} percent; reset to fit`
+      : `${zoomLevel.textContent} view; reset to fit`,
+  );
+}
+
+async function createReviewSmokeFile(name, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#e6eee6");
+  gradient.addColorStop(1, "#075b38");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#ffffff";
+  context.fillRect(width * 0.2, height * 0.18, width * 0.6, height * 0.24);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  return new File([blob], name, { type: "image/png" });
+}
+
+async function loadReviewSmokeFixture() {
+  const files = await Promise.all([
+    createReviewSmokeFile("review-smoke-one.png", 420, 1260),
+    createReviewSmokeFile("review-smoke-two.png", 560, 980),
+  ]);
+  await setSelectedFiles(
+    files.map((file) => ({ file, relativePath: file.name })),
+  );
+  await Promise.all(items.map((item) => ensurePreview(item)));
+  const boxCounts = [2, 1];
+  for (const [itemIndex, item] of items.entries()) {
+    item.boxes = Array.from({ length: boxCounts[itemIndex] }, (_, boxIndex) => {
+      const width = item.width * 0.22;
+      const height = item.height * 0.12;
+      const box = {
+        id: `smoke-box-${itemIndex}-${boxIndex}`,
+        x: item.width * (0.18 + boxIndex * 0.34),
+        y: item.height * (0.32 + boxIndex * 0.12),
+        width,
+        height,
+        label: "synthetic badge",
+        score: 0.9,
+        source: "manual",
+      };
+      box.points = rectangleCorners(box);
+      return box;
+    });
+    item.status = "detected";
+    item.message = `${item.boxes.length} smoke badge${
+      item.boxes.length === 1 ? "" : "s"
+    }`;
+    item.exportStatus = "Smoke review ready";
+    item.viewScaleMode = "fit";
+    item.viewZoom = 1;
+    refreshItemAttention(item);
+  }
+  activeIndex = 0;
+  renderFilmstrip();
+  await renderCarousel();
+  setWorkflowStage("review", { focus: false });
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+  updateSummary();
+  updateButtons();
+  return reviewSmokeState();
+}
+
+function reviewSmokeState() {
+  const activeItem = items[activeIndex] || null;
+  const selected = activeItem?.boxes.find(
+    (box) => box.id === activeItem.selectedBoxId,
+  );
+  return {
+    activeIndex,
+    boxCounts: items.map((item) => item.boxes.length),
+    selectedBoxIds: items.map((item) => item.selectedBoxId),
+    selectedStrength: selected?.redactionStrength ?? null,
+    summary: elements.summaryText.textContent,
+    inspectorTitle:
+      document.querySelector(".selected-mask-title")?.textContent || null,
+    viewScaleMode: activeItem?.viewScaleMode || null,
+    viewZoom: activeItem?.viewZoom || null,
+    exportStatus: activeItem?.exportStatus || null,
+    exportInFlight: Boolean(activeItem?.exportInFlight),
+    exportQueueCount: activeItem?.exportQueueCount || 0,
+    imageInfoOutputFormat: activeItem?.imageInfo?.outputFormat || null,
+    reviewConfirmations: items.map((item) => item.reviewConfirmed),
+    reviewActionInFlight: Boolean(activeItem?.reviewActionInFlight),
+    reviewControl:
+      document.querySelector(".current-image-review-state")?.textContent || null,
+    workflowStage: document.body.dataset.workflowStage,
+  };
+}
+
+function simulateOtherImageProcessing(enabled) {
+  const activeItem = items[activeIndex];
+  const otherItem = items.find((item) => item !== activeItem);
+  running = Boolean(enabled);
+  if (otherItem) otherItem.processing = Boolean(enabled);
+  if (activeItem) renderItemStatus(activeItem);
+  return reviewSmokeState();
+}
+
+function updateViewerScrollAffordance(card) {
+  if (!card) return;
+  const frame = card.querySelector(".viewer-frame");
+  if (!frame) return;
+  frame.classList.remove("has-scroll-content");
+  frame.classList.add("is-at-bottom");
+}
+
+function updateViewerLayout(card, item) {
+  if (!card || !item?.previewImage) return;
+  const viewer = card.querySelector(".canvas-wrap");
+  const frame = card.querySelector(".viewer-frame");
+  const stage = card.querySelector(".viewer-content");
+  const canvas = card.querySelector("canvas");
+  const afterImage = card.querySelector(".after-preview");
+  if (!viewer || !frame || !stage || !canvas || !afterImage) return;
+  const baseHeight = Math.round(
+    window.innerWidth <= 760
+      ? clamp(window.innerHeight * 0.62, 420, 640)
+      : clamp(window.innerHeight * 0.72, 560, 960),
+  );
+  frame.style.height = `${baseHeight}px`;
+  frame.dataset.baseHeight = String(baseHeight);
+  const viewportWidth = viewer.clientWidth;
+  const viewportHeight = baseHeight;
+  if (!(viewportWidth > 0) || !(viewportHeight > 0)) return;
+
+  const size = fittedImageSize(
+    canvas.width || item.previewImage.naturalWidth,
+    canvas.height || item.previewImage.naturalHeight,
+    viewportWidth,
+    viewportHeight,
+    item.viewScaleMode,
+    item.viewZoom,
+  );
+  const expandedHeight =
+    item.viewScaleMode === "fit"
+      ? baseHeight
+      : Math.max(baseHeight, Math.ceil(size.height));
+  frame.style.height = `${expandedHeight}px`;
+  const stageWidth = Math.max(viewportWidth, size.width);
+  const stageHeight = expandedHeight;
+  const left = Math.max(0, (stageWidth - size.width) / 2);
+  const top = Math.max(0, (stageHeight - size.height) / 2);
+
+  stage.style.width = `${stageWidth}px`;
+  stage.style.height = `${stageHeight}px`;
+  for (const media of [canvas, afterImage]) {
+    media.style.left = `${left}px`;
+    media.style.top = `${top}px`;
+    media.style.width = `${size.width}px`;
+    media.style.height = `${size.height}px`;
+  }
+  if (size.width <= viewportWidth + 1) {
+    viewer.scrollLeft = 0;
+  }
+  updateViewerScrollAffordance(card);
+}
+
+function setItemZoom(item, zoom, anchor = null) {
+  const card = document.querySelector(`[data-item-id="${item?.id}"]`);
+  if (!card) return;
+  const viewer = card.querySelector(".canvas-wrap");
+  const canvas = card.querySelector("canvas");
+  if (!viewer || !canvas) return;
+  const viewerRect = viewer.getBoundingClientRect();
+  const oldCanvasRect = canvas.getBoundingClientRect();
+  const clientX = anchor?.clientX ?? viewerRect.left + viewerRect.width / 2;
+  const clientY = anchor?.clientY ?? viewerRect.top + viewerRect.height / 2;
+  const sourceX = clamp(
+    (clientX - oldCanvasRect.left) / Math.max(1, oldCanvasRect.width),
+    0,
+    1,
+  );
+  const sourceY = clamp(
+    (clientY - oldCanvasRect.top) / Math.max(1, oldCanvasRect.height),
+    0,
+    1,
+  );
+
+  item.viewScaleMode = "zoom";
+  item.viewZoom = zoom;
+  updateViewScaleControls(card, item);
+  updateViewerLayout(card, item);
+
+  const newCanvasRect = canvas.getBoundingClientRect();
+  viewer.scrollLeft +=
+    newCanvasRect.left + sourceX * newCanvasRect.width - clientX;
+  window.scrollBy({
+    top: newCanvasRect.top + sourceY * newCanvasRect.height - clientY,
+    behavior: "auto",
+  });
+  updateViewerScrollAffordance(card);
+}
+
+function stepItemZoom(item, direction, anchor = null) {
+  if (!item) return;
+  const current = item.viewScaleMode === "zoom" ? item.viewZoom : 1;
+  setItemZoom(item, steppedViewZoom(current, direction), anchor);
+}
+
+function refreshViewerLayouts() {
+  for (const card of document.querySelectorAll(".image-card")) {
+    const item = items.find(
+      (candidate) => candidate.id === card.dataset.itemId,
+    );
+    if (item) updateViewerLayout(card, item);
+  }
+}
+
+function scheduleViewerLayoutRefresh() {
+  requestAnimationFrame(() => {
+    refreshViewerLayouts();
+    // A hidden setup-stage viewer can report its old width for the first
+    // frame after Start batch. Recheck after the review layout has painted.
+    requestAnimationFrame(refreshViewerLayouts);
+  });
+}
+
+function setWorkflowStage(stage, { focus = true } = {}) {
+  const review = stage === "review";
+  document.body.dataset.workflowStage = review ? "review" : "setup";
+  elements.setupPanel.hidden = review;
+  elements.reviewSection.hidden = !review;
+  elements.setupPanel.inert = review;
+  elements.reviewSection.inert = !review;
+  if (review) scheduleViewerLayoutRefresh();
+  if (!focus) return;
+  requestAnimationFrame(() => {
+    const heading = review
+      ? document.querySelector("#review-title")
+      : document.querySelector("#setup-title");
+    heading?.setAttribute("tabindex", "-1");
+    heading?.focus({ preventScroll: true });
+  });
 }
 
 async function verifyLocalServer() {
@@ -469,6 +905,7 @@ async function chooseSourceFolder() {
       `${handle.name} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
     updateExportDestination();
     await setSelectedFiles(selected);
+    if (!importedManifest) requireOutputFormatChoice();
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error(error);
@@ -520,13 +957,32 @@ async function loadSelectedFiles(event) {
       `${sourceRootName(selected[0]?.file) || "Selected folder"} · ${selected.length} supported image${selected.length === 1 ? "" : "s"}`;
     updateExportDestination();
     await setSelectedFiles(selected);
+    if (!importedManifest) requireOutputFormatChoice();
   } catch (error) {
     console.error(error);
     showProgress(`Could not open the source folder: ${error.message}`, 0);
   }
 }
 
+function requireOutputFormatChoice() {
+  elements.outputFormatInput.value = "";
+  elements.outputFormatChoice.classList.add("needs-choice");
+  updateButtons();
+  showProgress(
+    "Folder ready · choose the output format before starting the batch.",
+    100,
+  );
+  requestAnimationFrame(() => {
+    elements.outputFormatChoice.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+    elements.outputFormatInput.focus({ preventScroll: true });
+  });
+}
+
 async function setSelectedFiles(selected) {
+  setWorkflowStage("setup", { focus: false });
   releaseItems();
   thumbnailObserver?.disconnect();
   thumbnailObserver = null;
@@ -549,15 +1005,31 @@ async function setSelectedFiles(selected) {
     workerNumber: null,
     boxes: [],
     modelBoxes: [],
+    personGuidance: [],
+    attention: null,
+    reviewConfirmed: false,
+    reviewedAt: null,
+    manualAddedCount: 0,
+    removedMaskCount: 0,
+    cornerAdjustedCount: 0,
     selectedBoxId: null,
     viewMode: "before",
+    viewScaleMode: defaultViewScaleMode,
+    viewZoom: 1,
     redactedPreviewUrl: null,
     redactedPreviewRevision: -1,
+    redactedPreviewRequest: null,
+    metadataSidecarBlob: null,
+    metadataSidecarPromise: null,
+    metadataSidecarRunId: null,
+    exportQueueCount: 0,
+    exportInFlight: false,
     editRevision: 0,
     exportRevision: -1,
     importedRun: false,
     exportStatus: "Waiting for batch",
     timing: null,
+    stageTimings: {},
     status: "queued",
     message: "Waiting for detection",
   }));
@@ -758,6 +1230,10 @@ function restoreRunSettings(manifest) {
   }
   elements.redactionStyleInput.value =
     manifest.redactionStyle === "gaussian" ? "gaussian" : "mosaic";
+  elements.outputFormatInput.value = normalizeExportFormat(
+    manifest.outputFormatPreference,
+  );
+  elements.outputFormatChoice.classList.remove("needs-choice");
   elements.strengthOutput.value = elements.strengthInput.value;
   updateRedactionStyleUI();
   elements.workerCountInput.value = normalizeWorkerPreference(
@@ -799,10 +1275,22 @@ async function restoreImportedRun() {
     }
     item.boxes = (entry.reviewedMasks || []).map(deserializeMask);
     item.modelBoxes = (entry.initialModelMasks || []).map(deserializeMask);
+    item.personGuidance = Array.isArray(entry.personGuidance)
+      ? entry.personGuidance.map(clonePersonGuide)
+      : [];
+    item.reviewConfirmed = Boolean(entry.reviewConfirmed);
+    item.reviewedAt = entry.reviewedAt || null;
+    item.manualAddedCount = Number(entry.manualAddedCount) || 0;
+    item.removedMaskCount = Number(entry.removedMaskCount) || 0;
+    item.cornerAdjustedCount = Number(entry.cornerAdjustedCount) || 0;
     item.selectedBoxId = null;
     item.imageInfo = entry.imageInfo || null;
     item.editRevision = Math.max(0, Number(entry.editRevision) || 0);
     item.workerNumber = Number(entry.workerNumber) || null;
+    item.stageTimings =
+      entry.stageTimings && typeof entry.stageTimings === "object"
+        ? { ...entry.stageTimings }
+        : {};
     if (
       entry.detectionTimeMs != null ||
       entry.exportTimeMs != null ||
@@ -853,6 +1341,7 @@ async function restoreImportedRun() {
       item.importedRun = true;
       item.exportStatus = "Restored · awaiting export";
     }
+    refreshItemAttention(item);
     restored += 1;
   }
   if (checkpoint) {
@@ -860,7 +1349,7 @@ async function restoreImportedRun() {
     pauseRequested = false;
     runState = batchPaused ? "paused" : "completed";
   }
-  activeIndex = 0;
+  activeIndex = firstAttentionIndex();
   renderFilmstrip();
   await renderCarousel();
   updateSummary();
@@ -880,6 +1369,7 @@ async function restoreImportedRun() {
     );
   }
   if (restored > 0) {
+    setWorkflowStage("review", { focus: false });
     void preloadImportedReviewStates();
   }
   scheduleProjectCache();
@@ -943,6 +1433,9 @@ async function restoreCachedProject() {
     updateExportDestination();
     await setSelectedFiles(selected);
     restoreCachedSessionDetails(cachedProject);
+    if (items.some((item) => item.status === "detected")) {
+      setWorkflowStage("review", { focus: false });
+    }
     showProgress(
       `Restored ${items.length} image${items.length === 1 ? "" : "s"} from the local project cache.`,
       100,
@@ -1119,6 +1612,7 @@ function buildProjectCacheSnapshot() {
     paddingPercent: Number(elements.paddingInput.value),
     redactionStrength: Number(elements.strengthInput.value),
     redactionStyle: elements.redactionStyleInput.value,
+    outputFormatPreference: elements.outputFormatInput.value,
     featherPercent: Number(elements.featherInput.value),
     workerPreference: elements.workerCountInput.value,
     detectionPhrases: elements.labelsInput.value,
@@ -1155,6 +1649,10 @@ function deserializeMask(mask) {
       mask.classifierMargin == null ? null : Number(mask.classifierMargin),
     classifierTopLabel: mask.classifierTopLabel || null,
     classifierDecision: mask.classifierDecision || null,
+    detectionPass: mask.detectionPass || null,
+    personId: mask.personId || null,
+    lanyardGuided: Boolean(mask.lanyardGuided),
+    redactionStrength: normalizeRedactionStrength(mask.redactionStrength),
   };
   restored.points =
     Array.isArray(mask.points) && mask.points.length === 4
@@ -1178,21 +1676,24 @@ function loadImage(url) {
 
 function releaseItems() {
   for (const item of items) {
-    releasePreview(item);
+    releasePreview(item, { includeRedacted: true });
     if (item.thumbnailUrl) URL.revokeObjectURL(item.thumbnailUrl);
     item.thumbnailUrl = null;
     item.thumbnailPromise = null;
   }
 }
 
-function releasePreview(item) {
+function releasePreview(item, { includeRedacted = false } = {}) {
   if (item.processing || item.previewPromise) return;
   if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-  if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
   item.previewUrl = null;
   item.previewImage = null;
-  item.redactedPreviewUrl = null;
-  item.redactedPreviewRevision = -1;
+  if (includeRedacted) {
+    if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+    item.redactedPreviewUrl = null;
+    item.redactedPreviewRevision = -1;
+    item.redactedPreviewRequest = null;
+  }
 }
 
 async function ensurePreview(item) {
@@ -1282,29 +1783,16 @@ async function loadModel() {
 
 async function loadModelWorker(workerNumber) {
   setModelStatus("loading", `Loading detector for worker ${workerNumber}…`);
-  const workerDetector = await pipeline("zero-shot-object-detection", MODEL_ID, {
-    dtype: "q8",
-    device: "wasm",
+  const modelWorker = createModelWorker(workerNumber, {
+    onStatus: ({ inferenceThreads }) => {
+      setModelStatus(
+        "loading",
+        `Worker ${workerNumber} ready · ${inferenceThreads} inference thread${inferenceThreads === 1 ? "" : "s"} · UI isolated`,
+      );
+    },
   });
-  try {
-    setModelStatus("loading", `Loading classifier for worker ${workerNumber}…`);
-    const workerClassifier = await pipeline(
-      "zero-shot-image-classification",
-      CLASSIFIER_MODEL_ID,
-      {
-        dtype: "q8",
-        device: "wasm",
-      },
-    );
-    return {
-      detector: workerDetector,
-      rescueClassifier: workerClassifier,
-      workerNumber,
-    };
-  } catch (error) {
-    await workerDetector.dispose?.();
-    throw error;
-  }
+  await modelWorker.ready;
+  return modelWorker;
 }
 
 async function ensureModelWorkers(requestedCount) {
@@ -1335,6 +1823,7 @@ async function ensureModelWorkers(requestedCount) {
 
 async function startBatch() {
   if (batchPromise || running) return batchPromise;
+  setWorkflowStage("review", { focus: false });
   batchPromise = runAll()
     .catch((error) => {
       console.error("Batch processing failed.", error);
@@ -1370,7 +1859,7 @@ async function runAll() {
   if (pendingIndices.length === 0) {
     batchPaused = false;
     runState = "completed";
-    activeIndex = 0;
+    activeIndex = firstAttentionIndex();
     showProgress("Every image in this run is already saved.", 100);
     showCompletion(
       "Batch already complete",
@@ -1509,10 +1998,12 @@ async function runAll() {
   batchOperation = null;
   pauseRequested = false;
   batchPaused = false;
-  activeIndex = 0;
+  activeIndex = firstAttentionIndex();
   showCompletion(
     "Batch processing complete",
-    `${finishedItemCount()} of ${items.length} images finished. Review begins with the first image.`,
+    `${finishedItemCount()} of ${items.length} images finished · ` +
+      `${attentionQueueItems().length} flagged issue${attentionQueueItems().length === 1 ? "" : "s"} · ` +
+      `${unreviewedDetectedItems().length} await review confirmation.`,
   );
   await renderCarousel();
   updateButtons();
@@ -1530,32 +2021,41 @@ async function detectItem(item, models = modelWorkers[0]) {
     if (!models?.detector || !models?.rescueClassifier) {
       throw new Error("A local model worker is not ready.");
     }
-    await ensurePreview(item);
+    item.stageTimings = {};
+    await timedItemStage(item, "previewDecodeMs", () => ensurePreview(item));
     const prompt = normalizeGroundingPrompt(elements.labelsInput.value);
     elements.labelsInput.value = prompt;
     const threshold = Number(elements.thresholdInput.value);
     await yieldToUi();
-    const output = await models.detector(item.previewUrl, [prompt], {
-      threshold,
-      top_k: 40,
-    });
+    const output = await timedItemStage(item, "globalDetectionMs", () =>
+      models.detector(item.previewUrl, [prompt], {
+        threshold,
+        top_k: 40,
+      }),
+    );
     const scaleX = item.width / item.previewImage.naturalWidth;
     const scaleY = item.height / item.previewImage.naturalHeight;
     const candidates = output.map((result) =>
       normalizeDetection(result, item, scaleX, scaleY),
     );
     const unverifiedModelBoxes = filterBadgeDetections(candidates, item);
-    const torsoRegions = elements.enhancedInput.checked
-      ? await detectPersonTorsoRegions(item, models)
-      : [];
-    const globalVerification = elements.enhancedInput.checked
-      ? await verifyGlobalCandidates(
+    const personGuidance = await timedItemStage(
+      item,
+      "personDetectionMs",
+      () => detectPersonGuidance(item, models),
+    );
+    const torsoRegions = personGuidance.map((guide) => guide.torso);
+    const globalVerification = await timedItemStage(
+      item,
+      "globalVerificationMs",
+      () =>
+        verifyGlobalCandidates(
           item,
           unverifiedModelBoxes,
           models,
           torsoRegions,
-        )
-      : { retained: unverifiedModelBoxes, rejected: [] };
+        ),
+    );
     const modelBoxes = globalVerification.retained.map((box) =>
       withRectangleCorners({
         ...box,
@@ -1568,35 +2068,57 @@ async function detectItem(item, models = modelWorkers[0]) {
       }),
     );
     const torsoRescues = elements.enhancedInput.checked
-      ? await detectTorsoRescues(
-          item,
-          prompt,
-          modelBoxes,
-          models,
-          torsoRegions,
+      ? await timedItemStage(item, "torsoRescueMs", () =>
+          detectTorsoRescues(
+            item,
+            prompt,
+            modelBoxes,
+            models,
+            personGuidance,
+          ),
         )
       : [];
     const detectedBoxes = mergeGlobalWithTorsoRescues(
       modelBoxes,
       torsoRescues,
     );
-    item.boxes = await autoFitDetectedMasks(item, detectedBoxes);
+    item.boxes = await timedItemStage(item, "cornerFitMs", () =>
+      autoFitDetectedMasks(item, detectedBoxes),
+    );
     item.modelBoxes = item.boxes.map(cloneMask);
+    item.personGuidance = personGuidance.map(clonePersonGuide);
     item.globalClassifierRejectedCount = globalVerification.rejected.length;
     item.globalClassifierRejected = globalVerification.rejected.map(cloneMask);
     item.status = "detected";
+    item.reviewConfirmed = false;
+    item.reviewedAt = null;
+    item.manualAddedCount = 0;
+    item.removedMaskCount = 0;
+    item.cornerAdjustedCount = 0;
+    refreshItemAttention(item);
     const fittedCount = item.boxes.filter((box) => box.autoFitted).length;
+    const lanyardRescues = torsoRescues.filter(
+      (box) => box.detectionPass === "lanyard-rescue",
+    ).length;
     item.message =
       `${item.boxes.length} likely badge${item.boxes.length === 1 ? "" : "s"}` +
       (globalVerification.rejected.length
         ? ` · ${globalVerification.rejected.length} non-person/negative rejected`
         : "") +
-      (torsoRescues.length ? ` · ${torsoRescues.length} torso rescue` : "") +
-      (fittedCount ? ` · ${fittedCount} corner-fit` : " · rectangle fallback");
+      (lanyardRescues ? ` · ${lanyardRescues} lanyard rescue` : "") +
+      (torsoRescues.length - lanyardRescues
+        ? ` · ${torsoRescues.length - lanyardRescues} torso rescue`
+        : "") +
+      (fittedCount
+        ? ` · ${fittedCount} corner-fit`
+        : item.boxes.length
+          ? " · rectangle fallback"
+          : "");
   } catch (error) {
     console.error(error);
     item.status = "error";
     item.message = error.message;
+    refreshItemAttention(item);
   }
 
   if (document.querySelector(`[data-item-id="${item.id}"]`)) {
@@ -1615,11 +2137,7 @@ async function verifyGlobalCandidates(item, boxes, models, torsoRegions = []) {
   const retained = [];
   const rejected = [];
   for (const box of boxes) {
-    if (
-      torsoRegions.length > 0 &&
-      !candidateInsideTorso(box, torsoRegions) &&
-      !candidateLooksLikeCroppedForeground(box, item.width, item.height)
-    ) {
+    if (!candidateInsideTorso(box, torsoRegions)) {
       rejected.push({
         ...box,
         classifierDecision: "rejected-outside-person",
@@ -1673,7 +2191,7 @@ function normalizeGroundingPrompt(value) {
   return `${prompt || "identification badge"}.`;
 }
 
-async function detectPersonTorsoRegions(item, models) {
+async function detectPersonGuidance(item, models) {
   const scaleX = item.width / item.previewImage.naturalWidth;
   const scaleY = item.height / item.previewImage.naturalHeight;
   await yieldToUi();
@@ -1687,11 +2205,24 @@ async function detectPersonTorsoRegions(item, models) {
       .filter((box) => isPlausiblePerson(box, item)),
     0.52,
   ).slice(0, 24);
-  return deduplicateCropRegions(
-    persons.map((person) =>
-      torsoRegionForPerson(person, item.width, item.height),
-    ),
-  );
+  return persons.map((person, index) => {
+    const areaRatio =
+      (person.width * person.height) / Math.max(1, item.width * item.height);
+    const prominent =
+      areaRatio >= 0.025 &&
+      person.width / item.width >= 0.06 &&
+      person.height / item.height >= 0.28;
+    return {
+      id: `person-${index + 1}-${person.id}`,
+      person,
+      torso: torsoRegionForPerson(person, item.width, item.height),
+      attentionEligible: prominent,
+      badgeFoundBeforeRescue: false,
+      lanyardDetected: false,
+      lanyardCount: 0,
+      rescueFound: false,
+    };
+  });
 }
 
 async function detectTorsoRescues(
@@ -1699,12 +2230,20 @@ async function detectTorsoRescues(
   prompt,
   globalBoxes,
   models,
-  regions,
+  personGuidance,
 ) {
   const candidates = [];
+  const initiallyMatchedPeople = new Set(
+    associateBadgesToPeople(personGuidance, globalBoxes).matchedPersonIds,
+  );
 
-  for (const region of regions) {
+  for (const guide of personGuidance) {
+    const region = guide.torso;
     if (region.width < 48 || region.height < 64) continue;
+    if (initiallyMatchedPeople.has(guide.id)) {
+      guide.badgeFoundBeforeRescue = true;
+      continue;
+    }
     const torso = await localImageRequest("/api/image/crop", item.file, {
       region,
       width: 1200,
@@ -1713,20 +2252,60 @@ async function detectTorsoRescues(
     });
     const torsoUrl = URL.createObjectURL(torso.blob);
     try {
-      await yieldToUi();
-      const output = await models.detector(torsoUrl, [prompt], {
-        threshold: TORSO_THRESHOLD,
-        top_k: 30,
-      });
       const cropImage = {
         width: torso.info.width,
         height: torso.info.height,
       };
+      let lanyards = [];
+      try {
+        await yieldToUi();
+        const lanyardOutput = await models.detector(
+          torsoUrl,
+          [LANYARD_PROMPT],
+          {
+            threshold: LANYARD_THRESHOLD,
+            top_k: 12,
+          },
+        );
+        lanyards = deduplicateBadgeDetections(
+          lanyardOutput
+            .map((result) => normalizeDetection(result, cropImage))
+            .filter((box) => isPlausibleLanyard(box, cropImage)),
+          0.38,
+        ).slice(0, 3);
+      } catch (error) {
+        console.warn("Lanyard guidance was unavailable for one person.", error);
+      }
+      guide.lanyardCount = lanyards.length;
+      guide.lanyardDetected = lanyards.length > 0;
+      guide.attentionEligible =
+        guide.attentionEligible || guide.lanyardDetected;
+      const lanyardSearchRegions = lanyards.map((lanyard) =>
+        lanyardBadgeSearchRegion(
+          lanyard,
+          cropImage.width,
+          cropImage.height,
+        ),
+      );
+      await yieldToUi();
+      const output = await models.detector(torsoUrl, [prompt], {
+        threshold: lanyards.length
+          ? LANYARD_BADGE_THRESHOLD
+          : TORSO_THRESHOLD,
+        top_k: 30,
+      });
       const best = filterBadgeDetections(
         output.map((result) => normalizeDetection(result, cropImage)),
         cropImage,
       )
         .filter((box) => isPlausibleTorsoBadge(box, cropImage))
+        .filter(
+          (box) =>
+            lanyardSearchRegions.length === 0 ||
+            lanyardSearchRegions.some((searchRegion) =>
+              candidateCenterInsideRegion(box, searchRegion),
+            ),
+        )
         .sort((a, b) => b.score - a.score)
         .slice(0, 1);
       for (const box of best) {
@@ -1737,8 +2316,12 @@ async function detectTorsoRescues(
           y: region.top + (box.y / cropImage.height) * region.height,
           width: (box.width / cropImage.width) * region.width,
           height: (box.height / cropImage.height) * region.height,
-          source: "torso-rescue",
-          detectionPass: "torso-rescue",
+          source: lanyards.length ? "lanyard-rescue" : "torso-rescue",
+          detectionPass: lanyards.length
+            ? "lanyard-rescue"
+            : "torso-rescue",
+          personId: guide.id,
+          lanyardGuided: lanyards.length > 0,
         };
         if (
           globalBoxes.some((global) => boxesOverlap(mapped, global, 0.24, 0.5))
@@ -1746,6 +2329,7 @@ async function detectTorsoRescues(
           continue;
         }
         if (await classifyTorsoRescue(item, mapped, models)) {
+          guide.rescueFound = true;
           candidates.push(
             withRectangleCorners({
               ...mapped,
@@ -1830,6 +2414,23 @@ function isPlausibleTorsoBadge(box, crop) {
     centerX <= 0.9 &&
     centerY >= 0.16 &&
     centerY <= 0.86
+  );
+}
+
+function isPlausibleLanyard(box, crop) {
+  const aspect = box.width / Math.max(1, box.height);
+  const areaRatio = (box.width * box.height) / (crop.width * crop.height);
+  const centerX = (box.x + box.width / 2) / crop.width;
+  const centerY = (box.y + box.height / 2) / crop.height;
+  return (
+    aspect >= 0.12 &&
+    aspect <= 1.9 &&
+    areaRatio >= 0.002 &&
+    areaRatio <= 0.48 &&
+    centerX >= 0.08 &&
+    centerX <= 0.92 &&
+    centerY >= 0.05 &&
+    centerY <= 0.78
   );
 }
 
@@ -2106,11 +2707,20 @@ function filmstripStateForItem(item) {
   if (item.processing || item.status === "running") {
     return { key: "processing", label: "Processing" };
   }
-  if (checkpointStatusForItem(item) === "completed") {
-    return { key: "done", label: "✓ Done" };
-  }
   if (item.decodeError || item.status === "error" || item.exportError) {
-    return { key: "error", label: "Needs attention" };
+    return { key: "error", label: "Processing issue" };
+  }
+  if (item.status === "detected" && item.reviewConfirmed) {
+    return { key: "reviewed", label: "✓ Reviewed" };
+  }
+  if (item.status === "detected" && item.attention?.reasons?.length) {
+    return {
+      key: "attention",
+      label: "Attention needed",
+    };
+  }
+  if (checkpointStatusForItem(item) === "completed") {
+    return { key: "done", label: "✓ Saved · review pending" };
   }
   if (item.status === "detected") {
     if (item.importedRun) {
@@ -2144,6 +2754,141 @@ async function changeCarousel(direction) {
   scheduleProjectCache();
 }
 
+function attentionQueueItems() {
+  return items.filter(
+    (item) =>
+      !item.reviewConfirmed &&
+      Array.isArray(item.attention?.reasons) &&
+      item.attention.reasons.length > 0,
+  );
+}
+
+function unreviewedDetectedItems() {
+  return items.filter(
+    (item) => item.status === "detected" && !item.reviewConfirmed,
+  );
+}
+
+async function goToNextAttentionItem() {
+  const queue = attentionQueueItems();
+  if (queue.length === 0) return;
+  const indices = queue.map((item) => items.indexOf(item));
+  const nextIndex =
+    indices.find((index) => index > activeIndex) ?? indices[0];
+  if (nextIndex === activeIndex) {
+    await renderCarousel();
+    return;
+  }
+  await centerCarouselAt(nextIndex);
+}
+
+async function toggleActiveItemReviewed() {
+  const item = items[activeIndex];
+  if (
+    !item ||
+    item.status !== "detected" ||
+    item.processing ||
+    item.reviewActionInFlight
+  ) {
+    return;
+  }
+
+  if (item.reviewConfirmed) {
+    item.reviewConfirmed = false;
+    item.reviewedAt = null;
+    item.exportStatus = "Review reopened · changes remain saved";
+    renderItemStatus(item);
+    updateSummary();
+    updateReviewAssistance();
+    scheduleProjectCache();
+    if (activeRun) void queueCheckpointWrite(runState);
+    return;
+  }
+
+  const reviewedIndex = activeIndex;
+  item.reviewConfirmed = true;
+  item.reviewedAt = new Date().toISOString();
+  item.reviewActionInFlight = true;
+  item.exportStatus =
+    item.exportRevision === item.editRevision && !item.exportError
+      ? "Saving review confirmation…"
+      : "Review confirmed · save queued…";
+  renderItemStatus(item);
+  updateSummary();
+  updateReviewAssistance();
+  scheduleProjectCache();
+  void persistReviewedItem(item);
+
+  const nextIndex = nextReviewIndex(reviewedIndex);
+  if (nextIndex !== reviewedIndex) {
+    await centerCarouselAt(nextIndex);
+    setCurrentImageReviewMessage("Previous image reviewed · save is in progress.");
+  }
+  if (unreviewedDetectedItems().length === 0) {
+    showCompletion(
+      "Review complete",
+      `${items.filter((candidate) => candidate.status === "detected").length} processed images are confirmed. Latest saves are finishing automatically.`,
+    );
+  }
+}
+
+function nextReviewIndex(currentIndex) {
+  const laterReady = items.findIndex(
+    (candidate, index) =>
+      index > currentIndex &&
+      candidate.status === "detected" &&
+      !candidate.reviewConfirmed,
+  );
+  if (laterReady >= 0) return laterReady;
+  const earlierReady = items.findIndex(
+    (candidate, index) =>
+      index < currentIndex &&
+      candidate.status === "detected" &&
+      !candidate.reviewConfirmed,
+  );
+  if (earlierReady >= 0) return earlierReady;
+  return currentIndex < items.length - 1 ? currentIndex + 1 : currentIndex;
+}
+
+async function persistReviewedItem(item) {
+  clearTimeout(itemExportTimers.get(item.id));
+  itemExportTimers.delete(item.id);
+  try {
+    if (!activeRun) await ensureExportRun({ allowPrompt: false });
+    if (item.exportQueueCount > 0 || item.exportInFlight) {
+      await exportQueue.catch(() => undefined);
+    }
+    if (
+      activeRun &&
+      item.exportRevision === item.editRevision &&
+      !item.exportError
+    ) {
+      await queueCheckpointWrite(runState);
+    } else {
+      await queueItemExport(item, { manual: true, updatePreview: true });
+    }
+    if (activeRun && item.exportRevision !== item.editRevision) {
+      throw new Error(item.exportError || "The latest image revision was not saved.");
+    }
+    item.exportStatus = activeRun
+      ? `Reviewed and saved · ${activeRun.runFolderName}`
+      : "Reviewed locally · choose an export destination to save the image";
+  } catch (error) {
+    console.error(error);
+    item.reviewConfirmed = false;
+    item.reviewedAt = null;
+    item.exportError = error.message;
+    item.exportStatus = `Review not completed: ${error.message}`;
+    refreshItemAttention(item);
+  } finally {
+    item.reviewActionInFlight = false;
+    renderItemStatus(item);
+    updateSummary();
+    updateReviewAssistance();
+    scheduleProjectCache();
+  }
+}
+
 function updateCarouselControls() {
   elements.pagination.hidden = items.length <= 1;
   elements.pageStatus.textContent =
@@ -2152,6 +2897,7 @@ function updateCarouselControls() {
       : `Image ${activeIndex + 1} of ${items.length} · use ← → or the filmstrip`;
   elements.previousPageButton.disabled = activeIndex === 0;
   elements.nextPageButton.disabled = activeIndex >= items.length - 1;
+  elements.summaryText.textContent = reviewProgressSummary(items, activeIndex);
 }
 
 async function centerCarouselAt(index) {
@@ -2180,48 +2926,152 @@ function renderItem(item, slot, isActive) {
         </div>
         <span class="item-status"></span>
       </div>
-      <div class="comparison-toggle" role="group" aria-label="Before and after view">
-        <button class="before-view" type="button">Before · edit masks</button>
-        <button class="after-view" type="button">After · redacted</button>
+      <div class="viewer-toolbar">
+        <div class="viewer-control-set">
+          <span class="viewer-control-label" aria-hidden="true">Preview</span>
+          <div class="comparison-toggle" role="group" aria-label="Before and after view">
+            <button class="before-view" type="button">Before · edit masks</button>
+            <button class="after-view" type="button">After · redacted</button>
+          </div>
+        </div>
+        <div class="viewer-control-set viewer-control-set-size">
+          <span class="viewer-control-label" aria-hidden="true">View</span>
+          <div class="view-scale-toggle" role="group" aria-label="Image sizing">
+            <button class="fit-view" type="button" title="Show the entire image">Fit in window</button>
+            <button class="fill-view" type="button" title="Use the full viewer width">Fill width</button>
+            <button class="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+            <button class="zoom-level" type="button" title="Reset zoom to fit">Fit</button>
+            <button class="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="current-image-review">
+          <span class="current-image-review-state">Waiting for this image</span>
+          <button class="button small secondary review-image" type="button" disabled>
+            Mark this image reviewed
+          </button>
+        </div>
       </div>
-      <div class="canvas-wrap">
-        <canvas aria-label="Image with editable badge detections"></canvas>
-        <img class="after-preview" alt="Redacted export preview" hidden />
-        <p class="after-pending" hidden>Preparing redacted preview…</p>
+      <div class="viewer-frame">
+        <div
+          class="canvas-wrap"
+          tabindex="0"
+          aria-label="Photo view. Use Control or Command plus scroll to zoom, and hold Space to pan."
+        >
+          <div class="viewer-content">
+            <canvas aria-label="Image with editable badge detections"></canvas>
+            <img class="after-preview" alt="Redacted export preview" hidden />
+            <p class="after-pending" hidden>Preparing redacted preview…</p>
+          </div>
+        </div>
+        <div class="scroll-affordance" aria-hidden="true">
+          Scroll to inspect the full photo <span>↓</span>
+        </div>
       </div>
-      <p class="export-status"></p>
+      <p class="attention-note" hidden></p>
+      <p class="export-status" role="status" aria-live="polite"></p>
       <div class="card-actions">
-        <button class="button small detect-one">Detect</button>
-        <button class="button small secondary remove-box">Remove selected</button>
-        <button class="button small secondary export-one">Save update</button>
+        <div class="mask-inspector" aria-live="polite">
+          <div class="mask-inspector-selection">
+            <button
+              class="mask-nav previous-mask"
+              type="button"
+              aria-label="Select previous badge"
+              title="Select previous badge"
+              disabled
+            >←</button>
+            <div>
+              <strong class="selected-mask-title">No badge selected</strong>
+              <span class="selected-mask-meta">Click a box to edit it</span>
+            </div>
+            <button
+              class="mask-nav next-mask"
+              type="button"
+              aria-label="Select next badge"
+              title="Select next badge"
+              disabled
+            >→</button>
+          </div>
+          <label class="selected-mask-strength">
+            <span class="mask-strength-label">Blur</span>
+            <input
+              class="mask-strength-input"
+              type="range"
+              min="${MIN_REDACTION_STRENGTH}"
+              max="${MAX_REDACTION_STRENGTH}"
+              value="${resolveRedactionStrength(null, elements.strengthInput.value)}"
+              step="1"
+              aria-label="Selected badge blur strength"
+              disabled
+            />
+            <output class="mask-strength-output">—</output>
+          </label>
+          <button class="button small secondary reset-mask-blur" disabled>
+            Reset blur
+          </button>
+          <button class="button small secondary remove-box" disabled>
+            Remove
+          </button>
+        </div>
+        <div class="photo-actions" aria-label="Photo actions">
+          <button class="button small secondary detect-one">Re-detect image</button>
+          <button
+            class="button small secondary export-one"
+            title="Save without marking this image reviewed or moving to the next image"
+          >Save only</button>
+        </div>
       </div>
     `;
   slot.append(card);
 
   if (isActive) {
     const canvas = card.querySelector("canvas");
+    const viewer = card.querySelector(".canvas-wrap");
+    canvas.tabIndex = 0;
     setupCanvasInteraction(canvas, item);
+    setupViewerNavigation(viewer, item);
     card.querySelector(".detect-one").addEventListener("click", async () => {
-      if (running) return;
+      if (running || item.processing) return;
       if (!modelWorkers.length) await loadModel();
       if (!modelWorkers.length) return;
       const startedAt = performance.now();
       item.workerNumber = 1;
-      await detectItem(item, modelWorkers[0]);
-      item.timing = {
-        detectionMs: performance.now() - startedAt,
-        exportMs: 0,
-        totalMs: performance.now() - startedAt,
-      };
-      await queueItemExport(item, { updatePreview: true });
+      item.processing = true;
+      renderItemStatus(item);
+      try {
+        await detectItem(item, modelWorkers[0]);
+        item.timing = {
+          detectionMs: performance.now() - startedAt,
+          exportMs: 0,
+          totalMs: performance.now() - startedAt,
+        };
+        await queueItemExport(item, { updatePreview: true });
+      } finally {
+        item.processing = false;
+        renderItemStatus(item);
+      }
     });
     card.querySelector(".remove-box").addEventListener("click", () => {
-      if (running) return;
+      if (item.processing) return;
       removeSelectedBox(item);
     });
+    card.querySelector(".previous-mask").addEventListener("click", () => {
+      selectAdjacentBadge(item, -1);
+    });
+    card.querySelector(".next-mask").addEventListener("click", () => {
+      selectAdjacentBadge(item, 1);
+    });
+    card.querySelector(".reset-mask-blur").addEventListener("click", () => {
+      if (item.processing) return;
+      const selected = item.boxes.find(
+        (box) => box.id === item.selectedBoxId,
+      );
+      if (!selected || selected.redactionStrength == null) return;
+      delete selected.redactionStrength;
+      markItemEdited(item);
+    });
     card.querySelector(".export-one").addEventListener("click", () => {
-      if (running) return;
-      queueItemExport(item, { updatePreview: true });
+      if (item.processing || item.status !== "detected") return;
+      queueItemExport(item, { updatePreview: true, manual: true });
     });
     card.querySelector(".before-view").addEventListener("click", () => {
       void setItemView(item, "before");
@@ -2229,6 +3079,42 @@ function renderItem(item, slot, isActive) {
     card.querySelector(".after-view").addEventListener("click", () => {
       void setItemView(item, "after");
     });
+    card.querySelector(".fit-view").addEventListener("click", () => {
+      setViewScaleMode(item, "fit");
+    });
+    card.querySelector(".fill-view").addEventListener("click", () => {
+      setViewScaleMode(item, "fill");
+    });
+    card.querySelector(".zoom-out").addEventListener("click", () => {
+      stepItemZoom(item, -1);
+    });
+    card.querySelector(".zoom-in").addEventListener("click", () => {
+      stepItemZoom(item, 1);
+    });
+    card.querySelector(".zoom-level").addEventListener("click", () => {
+      setViewScaleMode(item, "fit");
+    });
+    card.querySelector(".review-image").addEventListener("click", () => {
+      void toggleActiveItemReviewed();
+    });
+    card.querySelector(".canvas-wrap").addEventListener("scroll", () => {
+      updateViewerScrollAffordance(card);
+    });
+    card
+      .querySelector(".mask-strength-input")
+      .addEventListener("input", (event) => {
+        const selected = item.boxes.find(
+          (box) => box.id === item.selectedBoxId,
+        );
+        if (!selected) return;
+        const strength = resolveRedactionStrength(
+          event.currentTarget.value,
+          elements.strengthInput.value,
+        );
+        if (selected.redactionStrength === strength) return;
+        selected.redactionStrength = strength;
+        markItemEdited(item);
+      });
   } else {
     card.addEventListener("click", () => {
       void centerCarouselAt(items.indexOf(item));
@@ -2253,12 +3139,15 @@ function renderItem(item, slot, isActive) {
     ? `${item.workerNumber ? `Worker ${item.workerNumber} · ` : ""}Detection ${formatDuration(item.timing.detectionMs)} · export ${formatDuration(item.timing.exportMs)}`
     : "Timing available after processing";
   card.querySelector(".export-status").textContent = item.exportStatus;
-  const reviewLocked = Boolean(item.decodeError) || running || item.processing;
-  card.querySelector(".detect-one").disabled = reviewLocked;
-  card.querySelector(".export-one").disabled = reviewLocked;
+  updateViewScaleControls(card, item);
+  const actionLocked = Boolean(item.decodeError) || running || item.processing;
+  card.querySelector(".detect-one").disabled = actionLocked;
+  card.querySelector(".export-one").disabled =
+    Boolean(item.decodeError) || item.processing || item.status !== "detected";
   renderItemStatus(item);
   drawItem(item);
   updateItemView(item);
+  requestAnimationFrame(() => updateViewerLayout(card, item));
 }
 
 function renderItemStatus(item) {
@@ -2267,15 +3156,42 @@ function renderItemStatus(item) {
   if (!card) return;
   const status = card.querySelector(".item-status");
   status.textContent = item.message;
-  status.dataset.state = item.status;
-  const reviewLocked = running || item.processing;
+  status.dataset.state =
+    item.status === "detected" &&
+    !item.reviewConfirmed &&
+    item.attention?.reasons?.length
+      ? "attention"
+      : item.reviewConfirmed
+        ? "reviewed"
+        : item.status;
+  card.classList.toggle("is-reviewed", item.reviewConfirmed);
+  const attentionNote = card.querySelector(".attention-note");
+  if (attentionNote) {
+    const reasons = item.attention?.reasons || [];
+    attentionNote.hidden = reasons.length === 0 || item.reviewConfirmed;
+    attentionNote.textContent = `Check this image · ${reasons.join(" · ")}`;
+  }
+  const reviewLocked = item.processing || item.status === "running";
   card.querySelector(".detect-one").disabled =
-    Boolean(item.decodeError) || reviewLocked;
+    Boolean(item.decodeError) || running || reviewLocked;
   card.querySelector(".remove-box").disabled =
     !item.selectedBoxId || reviewLocked;
-  card.querySelector(".export-one").disabled =
-    Boolean(item.decodeError) || reviewLocked;
+  card.querySelector(".reset-mask-blur").disabled =
+    !item.selectedBoxId || reviewLocked;
+  for (const button of card.querySelectorAll(".mask-nav")) {
+    button.disabled = item.boxes.length === 0 || reviewLocked;
+  }
+  const saveButton = card.querySelector(".export-one");
+  saveButton.disabled =
+    Boolean(item.decodeError) || reviewLocked || item.status !== "detected";
+  saveButton.textContent = item.exportInFlight
+    ? "Saving…"
+    : item.exportQueueCount > 0
+      ? "Save queued"
+      : "Save only";
   card.querySelector("canvas").classList.toggle("is-read-only", reviewLocked);
+  updateSelectedMaskStrengthControl(item, card, reviewLocked);
+  updateCurrentImageReviewState(card, item);
   const timing = card.querySelector(".item-timing");
   if (timing) {
     timing.textContent = item.timing
@@ -2284,6 +3200,103 @@ function renderItemStatus(item) {
   }
   const exportStatus = card.querySelector(".export-status");
   if (exportStatus) exportStatus.textContent = item.exportStatus;
+  updateReviewAssistance();
+}
+
+function updateCurrentImageReviewState(card, item, overrideMessage = null) {
+  const state = card.querySelector(".current-image-review-state");
+  const button = card.querySelector(".review-image");
+  if (!state || !button) return;
+  button.disabled =
+    item.status !== "detected" ||
+    item.processing ||
+    item.status === "running" ||
+    item.reviewActionInFlight;
+  button.textContent = item.reviewConfirmed
+    ? "Reviewed ✓"
+    : nextReviewIndex(items.indexOf(item)) !== items.indexOf(item)
+      ? "Save, review & next →"
+      : "Save & mark reviewed";
+  button.setAttribute("aria-pressed", String(item.reviewConfirmed));
+  if (overrideMessage) {
+    state.textContent = overrideMessage;
+  } else if (item.reviewConfirmed) {
+    state.textContent = item.reviewActionInFlight
+      ? "Centered image · saving review…"
+      : "Centered image · review complete";
+  } else if (item.attention?.reasons?.length) {
+    state.textContent = `Centered image · check ${item.attention.reasons.join(" · ")}`;
+  } else if (item.status === "detected") {
+    state.textContent = "Centered image · visually inspect, then mark reviewed";
+  } else {
+    state.textContent = `Centered image · ${item.message}`;
+  }
+}
+
+function setCurrentImageReviewMessage(message) {
+  const item = items[activeIndex];
+  const card = item
+    ? document.querySelector(`[data-item-id="${item.id}"]`)
+    : null;
+  if (card && item) updateCurrentImageReviewState(card, item, message);
+}
+
+function updateSelectedMaskStrengthControl(
+  item,
+  card = document.querySelector(`[data-item-id="${item.id}"]`),
+  reviewLocked = item.processing || item.status === "running",
+) {
+  if (!card) return;
+  const input = card.querySelector(".mask-strength-input");
+  const output = card.querySelector(".mask-strength-output");
+  const label = card.querySelector(".mask-strength-label");
+  const title = card.querySelector(".selected-mask-title");
+  const meta = card.querySelector(".selected-mask-meta");
+  const resetButton = card.querySelector(".reset-mask-blur");
+  if (!input || !output || !label || !title || !meta || !resetButton) return;
+  const selected = item.boxes.find((box) => box.id === item.selectedBoxId);
+  input.disabled = !selected || reviewLocked;
+  if (!selected) {
+    input.value = String(
+      resolveRedactionStrength(null, elements.strengthInput.value),
+    );
+    output.value = "—";
+    output.textContent = "—";
+    label.textContent = "Blur";
+    title.textContent = "No badge selected";
+    meta.textContent =
+      item.boxes.length > 0
+        ? "Click a box to edit it"
+        : "Drag across a missed badge to add one";
+    resetButton.disabled = true;
+    return;
+  }
+  const position = selectedBadgePosition(item.boxes, item.selectedBoxId);
+  const strength = resolveRedactionStrength(
+    selected.redactionStrength,
+    elements.strengthInput.value,
+  );
+  input.value = String(strength);
+  output.value = String(strength);
+  output.textContent = String(strength);
+  label.textContent = "Blur";
+  title.textContent = `Badge ${position.number} of ${position.total}`;
+  meta.textContent =
+    selected.redactionStrength == null
+      ? `Using batch blur ${strength}`
+      : "Custom blur";
+  resetButton.disabled = reviewLocked || selected.redactionStrength == null;
+}
+
+function selectAdjacentBadge(item, direction) {
+  if (item.processing || item.boxes.length === 0) return;
+  const nextId = adjacentBadgeId(item.boxes, item.selectedBoxId, direction);
+  if (!nextId) return;
+  item.selectedBoxId = nextId;
+  if (item.viewMode !== "before") item.viewMode = "before";
+  drawItem(item);
+  updateItemView(item);
+  renderItemStatus(item);
 }
 
 function updateItemView(item) {
@@ -2307,6 +3320,7 @@ function updateItemView(item) {
   afterImage.hidden = !previewReady;
   pending.hidden = !showingAfter || previewReady;
   if (previewReady) afterImage.src = item.redactedPreviewUrl;
+  requestAnimationFrame(() => updateViewerLayout(card, item));
 }
 
 async function setItemView(item, viewMode) {
@@ -2324,6 +3338,7 @@ async function setItemView(item, viewMode) {
 }
 
 async function ensureRedactedPreview(item) {
+  await ensurePreview(item);
   if (
     item.redactedPreviewUrl &&
     item.redactedPreviewRevision === item.editRevision
@@ -2331,20 +3346,53 @@ async function ensureRedactedPreview(item) {
     updateItemView(item);
     return;
   }
-  const blob = await createRedactedBlob(item);
-  setRedactedPreview(item, blob);
+  const request = captureRedactionRequest(item);
+  if (item.redactedPreviewRequest?.revision === request.revision) {
+    await item.redactedPreviewRequest.promise;
+    return;
+  }
+
+  const promise = (async () => {
+    const blob = await createRedactedBlob(item, request);
+    return setRedactedPreview(item, blob, request.revision);
+  })();
+  item.redactedPreviewRequest = {
+    revision: request.revision,
+    promise,
+  };
+
+  let applied = false;
+  try {
+    applied = await promise;
+  } finally {
+    if (item.redactedPreviewRequest?.promise === promise) {
+      item.redactedPreviewRequest = null;
+    }
+  }
+
+  // An edit may have landed while the local service was producing this image.
+  // If the user is still looking at After, immediately request the current
+  // revision instead of allowing the stale result to become visible.
+  if (!applied && item.viewMode === "after") {
+    await ensureRedactedPreview(item);
+  }
 }
 
-function setRedactedPreview(item, blob) {
-  if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
-  item.redactedPreviewUrl = URL.createObjectURL(blob);
-  item.redactedPreviewRevision = item.editRevision;
-  updateItemView(item);
-  updateFilmstripItem(item);
+function setRedactedPreview(item, blob, revision = item.editRevision) {
+  return applyForCurrentEditRevision(item, revision, () => {
+    if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
+    item.redactedPreviewUrl = URL.createObjectURL(blob);
+    item.redactedPreviewRevision = revision;
+    updateItemView(item);
+    updateFilmstripItem(item);
+  });
 }
 
 function markItemEdited(item) {
   item.editRevision += 1;
+  item.reviewConfirmed = false;
+  item.reviewedAt = null;
+  refreshItemAttention(item);
   if (item.redactedPreviewUrl) URL.revokeObjectURL(item.redactedPreviewUrl);
   item.redactedPreviewUrl = null;
   item.redactedPreviewRevision = -1;
@@ -2356,13 +3404,82 @@ function markItemEdited(item) {
   scheduleItemExport(item);
 }
 
+function setupViewerNavigation(viewer, item) {
+  let pan = null;
+
+  viewer.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!spacePanning && event.button !== 1) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pan = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: viewer.scrollLeft,
+        pageScrollY: window.scrollY,
+      };
+      viewer.classList.add("is-panning");
+      viewer.setPointerCapture(event.pointerId);
+    },
+    { capture: true },
+  );
+
+  viewer.addEventListener(
+    "pointermove",
+    (event) => {
+      if (!pan || pan.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      viewer.scrollLeft = pan.scrollLeft - (event.clientX - pan.clientX);
+      window.scrollTo({
+        top: pan.pageScrollY - (event.clientY - pan.clientY),
+        behavior: "auto",
+      });
+      updateViewerScrollAffordance(viewer.closest(".image-card"));
+    },
+    { capture: true },
+  );
+
+  const endPan = (event) => {
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pan = null;
+    viewer.classList.remove("is-panning");
+    if (viewer.hasPointerCapture(event.pointerId)) {
+      viewer.releasePointerCapture(event.pointerId);
+    }
+  };
+  viewer.addEventListener("pointerup", endPan, { capture: true });
+  viewer.addEventListener("pointercancel", endPan, { capture: true });
+
+  viewer.addEventListener(
+    "wheel",
+    (event) => {
+      if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
+      event.preventDefault();
+      const current = item.viewScaleMode === "zoom" ? item.viewZoom : 1;
+      setItemZoom(item, continuousViewZoom(current, event.deltaY), event);
+    },
+    { passive: false },
+  );
+
+  viewer.addEventListener("dblclick", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    stepItemZoom(item, event.altKey ? -1 : 1, event);
+  });
+}
+
 function setupCanvasInteraction(canvas, item) {
   let dragStart = null;
   let previewBox = null;
   let cornerDrag = null;
 
   canvas.addEventListener("pointerdown", (event) => {
-    if (running || item.processing) return;
+    if (item.processing) return;
     const point = canvasPoint(event, canvas);
     const deleteHit = [...item.boxes]
       .reverse()
@@ -2381,7 +3498,7 @@ function setupCanvasInteraction(canvas, item) {
       ? hitCornerIndex(point, selected, canvas)
       : -1;
     if (selected && cornerIndex >= 0) {
-      cornerDrag = { box: selected, cornerIndex };
+      cornerDrag = { box: selected, cornerIndex, changed: false };
       dragStart = null;
       previewBox = null;
       canvas.setPointerCapture(event.pointerId);
@@ -2407,6 +3524,10 @@ function setupCanvasInteraction(canvas, item) {
 
   canvas.addEventListener("pointermove", (event) => {
     if (!cornerDrag && !dragStart) {
+      if (spacePanning) {
+        canvas.style.cursor = "grab";
+        return;
+      }
       const point = canvasPoint(event, canvas);
       const deleteHit = [...item.boxes]
         .reverse()
@@ -2424,6 +3545,7 @@ function setupCanvasInteraction(canvas, item) {
         cornerDrag.box.points = candidate;
         updateMaskBounds(cornerDrag.box);
         cornerDrag.box.userAdjusted = true;
+        cornerDrag.changed = true;
         item.message = `${item.boxes.length} reviewed mask${item.boxes.length === 1 ? "" : "s"}`;
         drawItem(item);
         renderItemStatus(item);
@@ -2438,10 +3560,14 @@ function setupCanvasInteraction(canvas, item) {
 
   canvas.addEventListener("pointerup", (event) => {
     if (cornerDrag) {
+      const changed = cornerDrag.changed;
       cornerDrag = null;
       canvas.releasePointerCapture(event.pointerId);
-      markItemEdited(item);
-      updateSummary();
+      if (changed) {
+        item.cornerAdjustedCount += 1;
+        markItemEdited(item);
+        updateSummary();
+      }
       return;
     }
     if (!dragStart) return;
@@ -2459,6 +3585,7 @@ function setupCanvasInteraction(canvas, item) {
       };
       manualBox.points = rectangleCorners(manualBox);
       item.boxes.push(manualBox);
+      item.manualAddedCount += 1;
       item.selectedBoxId = manualBox.id;
       item.message = `${item.boxes.length} reviewed mask${item.boxes.length === 1 ? "" : "s"}`;
       markItemEdited(item);
@@ -2476,7 +3603,9 @@ function setupCanvasInteraction(canvas, item) {
   });
 
   canvas.addEventListener("pointerleave", () => {
-    if (!cornerDrag && !dragStart) canvas.style.cursor = "crosshair";
+    if (!cornerDrag && !dragStart && !spacePanning) {
+      canvas.style.cursor = "crosshair";
+    }
   });
 }
 
@@ -2511,14 +3640,17 @@ function drawItem(item, previewBox = null) {
   const scaleY = canvas.height / item.height;
 
   const scaledBoxes = item.boxes.map((box) => scaleBox(box, scaleX, scaleY));
-  for (const box of scaledBoxes) {
+  for (const [index, box] of scaledBoxes.entries()) {
     drawBox(
       context,
       box,
       box.id === item.selectedBoxId,
+      index,
+      scaledBoxes.length,
     );
   }
-  for (const box of scaledBoxes) drawDeleteControl(context, box);
+  const selectedBox = scaledBoxes.find((box) => box.id === item.selectedBoxId);
+  if (selectedBox) drawDeleteControl(context, selectedBox);
   if (previewBox) {
     drawBox(
       context,
@@ -2528,8 +3660,11 @@ function drawItem(item, previewBox = null) {
         scaleY,
       ),
       true,
+      scaledBoxes.length,
+      scaledBoxes.length + 1,
     );
   }
+  requestAnimationFrame(() => updateViewerLayout(card, item));
 }
 
 function scaleBox(box, scaleX, scaleY) {
@@ -2546,20 +3681,26 @@ function scaleBox(box, scaleX, scaleY) {
   };
 }
 
-function drawBox(context, box, selected) {
+function drawBox(context, box, selected, index = 0, total = 1) {
   const scale = Math.max(context.canvas.width, context.canvas.height) / 1200;
   const lineWidth = Math.max(3, 4 * scale);
   const color = selected
-    ? "#ff9e1b"
+    ? "#70b94b"
     : box.source === "manual"
       ? "#00b38f"
       : "#fe5000";
   context.save();
   context.fillStyle = `${color}24`;
-  context.strokeStyle = color;
-  context.lineWidth = lineWidth;
   tracePolygon(context, maskPoints(box));
   context.fill();
+  if (selected) {
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = lineWidth + Math.max(4, 4 * scale);
+    context.stroke();
+    tracePolygon(context, maskPoints(box));
+  }
+  context.strokeStyle = color;
+  context.lineWidth = selected ? lineWidth + Math.max(2, 2 * scale) : lineWidth;
   context.stroke();
 
   const score = box.source === "manual" ? "manual" : `${Math.round(box.score * 100)}%`;
@@ -2568,7 +3709,10 @@ function drawBox(context, box, selected) {
       ? " · corner-fit adjusted"
       : " · corner-fit"
     : "";
-  const label = `${box.label} · ${score}${fitLabel}`;
+  const badgeNumber = Math.min(index + 1, total);
+  const label = selected
+    ? `Badge ${badgeNumber} selected · ${score}${fitLabel}`
+    : `Badge ${badgeNumber} · ${box.label} · ${score}${fitLabel}`;
   context.font =
     `600 ${Math.max(16, 19 * scale)}px Mulish, Aptos, Arial, sans-serif`;
   const textWidth = context.measureText(label).width;
@@ -2647,6 +3791,25 @@ function cloneMask(box) {
     detectionBounds: box.detectionBounds ? { ...box.detectionBounds } : undefined,
     points: maskPoints(box).map((point) => ({ ...point })),
   };
+}
+
+function clonePersonGuide(guide) {
+  return {
+    ...guide,
+    person: guide.person ? { ...guide.person } : null,
+    torso: guide.torso ? { ...guide.torso } : null,
+  };
+}
+
+function refreshItemAttention(item) {
+  item.attention = assessReviewAttention({
+    status: item.status,
+    width: item.width,
+    height: item.height,
+    boxes: item.boxes,
+    personGuides: item.personGuidance,
+  });
+  return item.attention;
 }
 
 function rectangleCorners(box) {
@@ -2747,6 +3910,7 @@ function removeSelectedBox(item) {
 
 function removeBoxById(item, boxId) {
   item.boxes = item.boxes.filter((box) => box.id !== boxId);
+  item.removedMaskCount += 1;
   item.selectedBoxId = null;
   item.message = `${item.boxes.length} reviewed mask${item.boxes.length === 1 ? "" : "s"}`;
   markItemEdited(item);
@@ -2864,9 +4028,29 @@ async function ensureExportRun({ allowPrompt = false } = {}) {
 }
 
 function queueItemExport(item, options = {}) {
+  clearTimeout(itemExportTimers.get(item.id));
+  itemExportTimers.delete(item.id);
+  item.exportQueueCount = (item.exportQueueCount || 0) + 1;
+  item.exportStatus = options.manual
+    ? "Manual save queued…"
+    : "Autosave queued…";
+  renderItemStatus(item);
   exportQueue = exportQueue
     .catch(() => undefined)
-    .then(() => exportItemToRun(item, options));
+    .then(async () => {
+      item.exportQueueCount = Math.max(0, item.exportQueueCount - 1);
+      item.exportInFlight = true;
+      item.exportStatus = options.manual
+        ? "Saving your changes…"
+        : "Autosaving latest changes…";
+      renderItemStatus(item);
+      try {
+        return await exportItemToRun(item, options);
+      } finally {
+        item.exportInFlight = false;
+        renderItemStatus(item);
+      }
+    });
   return exportQueue;
 }
 
@@ -2877,33 +4061,61 @@ function queueCheckpointWrite(state = runState) {
   return exportQueue;
 }
 
-async function exportItemToRun(item, { updatePreview = false } = {}) {
+async function exportItemToRun(
+  item,
+  { updatePreview = false, manual = false } = {},
+) {
   if (item.decodeError) return;
   const startedAt = performance.now();
-  item.exportStatus = activeRun ? "Auto-saving export…" : "Preparing after preview…";
+  let request = null;
+  let needsResave = false;
+  item.exportStatus = activeRun
+    ? manual
+      ? "Saving your changes…"
+      : "Autosaving latest changes…"
+    : "Preparing after preview…";
   renderItemStatus(item);
   try {
     // Keep the local service and source File readable under load by avoiding
     // two simultaneous full-file uploads for the same image.
-    const blob = await createRedactedBlob(item);
+    await ensurePreview(item);
+    request = captureRedactionRequest(item);
+    const blob = await timedItemStage(item, "redactionMs", () =>
+      createRedactedBlob(item, request),
+    );
+    setRedactedPreview(item, blob, request.revision);
     await yieldToUi();
-    const sidecar = await createMetadataSidecar(item);
-    if (updatePreview || isItemVisible(item) || item.viewMode === "after") {
-      setRedactedPreview(item, blob);
-    }
     if (activeRun) {
+      const sidecar = await timedItemStage(item, "metadataMs", () =>
+        createMetadataSidecar(item),
+      );
       const name = outputRelativePath(item);
       const sidecarName = `${name}.metadata.mie`;
-      await writeRelativeFile(activeRun.directory, name, blob);
-      await writeRelativeFile(activeRun.directory, sidecarName, sidecar);
-      item.exportRevision = item.editRevision;
-      item.exportedAt = new Date().toISOString();
-      item.exportError = null;
-      item.exportStatus = `Saved automatically · ${activeRun.runFolderName}`;
-      await writeRunMetadata(runState);
-    } else {
+      await timedItemStage(item, "fileWriteMs", async () => {
+        await writeRelativeFile(activeRun.directory, name, blob);
+        if (item.metadataSidecarRunId !== activeRun.runId) {
+          await writeRelativeFile(activeRun.directory, sidecarName, sidecar);
+          item.metadataSidecarRunId = activeRun.runId;
+        }
+      });
+      if (isCurrentEditRevision(item, request.revision)) {
+        item.exportRevision = request.revision;
+        item.exportedAt = new Date().toISOString();
+        item.exportError = null;
+        item.exportStatus = `Saved automatically · ${activeRun.runFolderName}`;
+        await timedItemStage(item, "checkpointWriteMs", () =>
+          writeRunMetadata(runState),
+        );
+      } else {
+        needsResave = true;
+        item.exportStatus = "Newer edit pending auto-save…";
+      }
+    } else if (isCurrentEditRevision(item, request.revision)) {
       item.exportStatus =
         "After preview ready · choose an export destination to auto-save";
+    } else {
+      needsResave = true;
+      item.exportStatus = "Newer edit pending preview refresh…";
     }
   } catch (error) {
     console.error(error);
@@ -2923,11 +4135,14 @@ async function exportItemToRun(item, { updatePreview = false } = {}) {
     }
     renderItemStatus(item);
     scheduleProjectCache();
+    if (needsResave && item.status === "detected") {
+      scheduleItemExport(item);
+    }
   }
 }
 
 function scheduleItemExport(item) {
-  if (item.status !== "detected" || running) return;
+  if (item.status !== "detected" || item.processing) return;
   scheduleProjectCache();
   clearTimeout(itemExportTimers.get(item.id));
   itemExportTimers.set(
@@ -2967,6 +4182,17 @@ function scheduleAllEditedExports() {
 
 async function exportAll() {
   if (items.length === 0 || running) return;
+  const unreviewed = unreviewedDetectedItems();
+  if (unreviewed.length > 0) {
+    activeIndex = items.indexOf(unreviewed[0]);
+    await renderCarousel();
+    showProgress(
+      `Review confirmation required · ${unreviewed.length} processed image${unreviewed.length === 1 ? "" : "s"} still need visual review. Press R to confirm each image.`,
+      100,
+    );
+    updateButtons();
+    return;
+  }
   const run = await ensureExportRun({ allowPrompt: true });
   if (!run) {
     showProgress(
@@ -3000,7 +4226,7 @@ async function exportAll() {
   await writeRunMetadata("completed");
   running = false;
   batchOperation = null;
-  activeIndex = 0;
+  activeIndex = firstAttentionIndex();
   showCompletion(
     "Export complete",
     `${items.filter((item) => item.exportRevision >= 0).length} redacted image${items.filter((item) => item.exportRevision >= 0).length === 1 ? "" : "s"} saved. Review begins with the first image.`,
@@ -3076,7 +4302,15 @@ function checkpointEntry(item) {
     processingTimeMs: item.timing?.totalMs || null,
     detectionTimeMs: item.timing?.detectionMs || null,
     exportTimeMs: item.timing?.exportMs || null,
+    stageTimings: { ...(item.stageTimings || {}) },
     workerNumber: item.workerNumber,
+    personGuidance: item.personGuidance.map(clonePersonGuide),
+    attention: item.attention,
+    reviewConfirmed: item.reviewConfirmed,
+    reviewedAt: item.reviewedAt,
+    manualAddedCount: item.manualAddedCount,
+    removedMaskCount: item.removedMaskCount,
+    cornerAdjustedCount: item.cornerAdjustedCount,
     initialModelMasks,
     reviewedMasks: finalMasks,
   };
@@ -3084,7 +4318,7 @@ function checkpointEntry(item) {
 
 function buildRunManifest() {
   return {
-    schemaVersion: 10,
+    schemaVersion: 12,
     appVersion: APP_VERSION,
     runId: activeRun.runId,
     runFolderName: activeRun.runFolderName,
@@ -3098,6 +4332,12 @@ function buildRunManifest() {
     model: MODEL_ID,
     detectionPhrases: elements.labelsInput.value,
     enhancedTorsoRescue: elements.enhancedInput.checked,
+    lanyardAwareSecondPass: {
+      enabled: elements.enhancedInput.checked,
+      lanyardPrompt: LANYARD_PROMPT,
+      lanyardThreshold: LANYARD_THRESHOLD,
+      badgeThreshold: LANYARD_BADGE_THRESHOLD,
+    },
     globalNegativeClassifier: {
       enabled: elements.enhancedInput.checked,
       model: CLASSIFIER_MODEL_ID,
@@ -3109,6 +4349,7 @@ function buildRunManifest() {
     paddingPercent: Number(elements.paddingInput.value),
     redactionStrength: Number(elements.strengthInput.value),
     redactionStyle: elements.redactionStyleInput.value,
+    outputFormatPreference: elements.outputFormatInput.value,
     featherPercent: Number(elements.featherInput.value),
     workerPreference: elements.workerCountInput.value,
     workerCount: lastBatchWorkerCount,
@@ -3121,6 +4362,31 @@ function buildRunManifest() {
     },
     batchDurationMs: lastBatchDurationMs,
     exportDurationMs: lastExportDurationMs,
+    reviewSummary: {
+      needsAttention: attentionQueueItems().length,
+      reviewed: items.filter((item) => item.reviewConfirmed).length,
+      peopleWithoutBadgeMasks: items.reduce(
+        (total, item) => total + (item.attention?.unmatchedPersonCount || 0),
+        0,
+      ),
+      manualMaskCount: items.reduce(
+        (total, item) =>
+          total + item.boxes.filter((box) => box.source === "manual").length,
+        0,
+      ),
+      masksAdded: items.reduce(
+        (total, item) => total + item.manualAddedCount,
+        0,
+      ),
+      masksRemoved: items.reduce(
+        (total, item) => total + item.removedMaskCount,
+        0,
+      ),
+      cornersAdjusted: items.reduce(
+        (total, item) => total + item.cornerAdjustedCount,
+        0,
+      ),
+    },
     files: items
       .filter((item) => item.exportRevision >= 0)
       .map((item) => manifestEntry(item)),
@@ -3158,11 +4424,19 @@ function manifestEntry(item) {
     processingTimeMs: item.timing?.totalMs || null,
     detectionTimeMs: item.timing?.detectionMs || null,
     exportTimeMs: item.timing?.exportMs || null,
+    stageTimings: { ...(item.stageTimings || {}) },
     workerNumber: item.workerNumber,
     globalClassifierRejectedCount: item.globalClassifierRejectedCount || 0,
     globalClassifierRejected: (item.globalClassifierRejected || []).map(
       serializeBox,
     ),
+    personGuidance: item.personGuidance.map(clonePersonGuide),
+    attention: item.attention,
+    reviewConfirmed: item.reviewConfirmed,
+    reviewedAt: item.reviewedAt,
+    manualAddedCount: item.manualAddedCount,
+    removedMaskCount: item.removedMaskCount,
+    cornerAdjustedCount: item.cornerAdjustedCount,
     initialModelMaskCount: initialModelMasks.length,
     initialModelMasks,
     reviewedMaskCount: finalMasks.length,
@@ -3210,6 +4484,7 @@ function buildTrainingAnnotations(manifest) {
           autoFitted: mask.autoFitted,
           fitConfidence: mask.fitConfidence,
           userAdjusted: mask.userAdjusted,
+          redactionStrength: mask.redactionStrength,
         },
       });
       annotationId += 1;
@@ -3251,18 +4526,33 @@ function serializeBox(box) {
     classifierMargin: box.classifierMargin ?? null,
     classifierTopLabel: box.classifierTopLabel ?? null,
     classifierDecision: box.classifierDecision ?? null,
+    detectionPass: box.detectionPass || null,
+    personId: box.personId || null,
+    lanyardGuided: Boolean(box.lanyardGuided),
+    ...redactionStrengthRecord(box),
   };
 }
 
-async function createRedactedBlob(item) {
-  await ensurePreview(item);
+function captureRedactionRequest(item) {
+  return {
+    revision: item.editRevision,
+    options: {
+      masks: item.boxes.map((box) => expandedMask(box, item)),
+      style: elements.redactionStyleInput.value,
+      outputFormat: elements.outputFormatInput.value,
+      strength: Number(elements.strengthInput.value),
+      featherPercent: Number(elements.featherInput.value),
+    },
+  };
+}
+
+async function createRedactedBlob(item, request = captureRedactionRequest(item)) {
   const response = await localImageRequest("/api/image/redact", item.file, {
-    masks: item.boxes.map((box) => expandedMask(box, item)),
-    style: elements.redactionStyleInput.value,
-    strength: Number(elements.strengthInput.value),
-    featherPercent: Number(elements.featherInput.value),
+    ...request.options,
   });
-  item.imageInfo = response.info;
+  if (isCurrentEditRevision(item, request.revision)) {
+    item.imageInfo = response.info;
+  }
   return response.blob;
 }
 
@@ -3279,12 +4569,29 @@ function expandedMask(box, item) {
       x: clamp(center.x + (point.x - center.x) * factor, 0, item.width),
       y: clamp(center.y + (point.y - center.y) * factor, 0, item.height),
     })),
+    redactionStrength: resolveRedactionStrength(
+      box.redactionStrength,
+      elements.strengthInput.value,
+    ),
   };
 }
 
 async function createMetadataSidecar(item) {
-  const response = await localImageRequest("/api/image/metadata", item.file);
-  return response.blob;
+  if (item.metadataSidecarBlob) return item.metadataSidecarBlob;
+  if (!item.metadataSidecarPromise) {
+    item.metadataSidecarPromise = localImageRequest(
+      "/api/image/metadata",
+      item.file,
+    )
+      .then((response) => {
+        item.metadataSidecarBlob = response.blob;
+        return response.blob;
+      })
+      .finally(() => {
+        item.metadataSidecarPromise = null;
+      });
+  }
+  return item.metadataSidecarPromise;
 }
 
 async function writeFile(directory, name, blob) {
@@ -3317,8 +4624,17 @@ function outputName(item) {
   const name = item.file.name;
   const dot = name.lastIndexOf(".");
   const base = dot < 0 ? name : name.slice(0, dot);
-  const extension = item.imageInfo?.outputExtension || `.${fileExtension(name)}`;
-  if (item.imageInfo?.converted) {
+  const preference = normalizeExportFormat(elements.outputFormatInput.value);
+  const sourceFormat =
+    item.imageInfo?.sourceFormat ||
+    (["jpg", "jpeg"].includes(fileExtension(name))
+      ? "jpeg"
+      : fileExtension(name) === "heic" || fileExtension(name) === "heif"
+        ? "heif"
+        : fileExtension(name));
+  const outputFormat = resolveExportFormat(preference, sourceFormat);
+  const extension = exportExtension(outputFormat);
+  if (preference === "original" && sourceFormat === "heif") {
     return `${base}-redacted-from-${fileExtension(name)}${extension}`;
   }
   return `${base}-redacted${extension}`;
@@ -3346,19 +4662,7 @@ function outputRelativePath(item) {
 }
 
 async function localImageRequest(path, file, options) {
-  const sourceFile = await materializeSourceFile(file);
-  const headers = {
-    "Content-Type": "application/octet-stream",
-    "X-Badge-Source-Name": encodeHeader(sourceFile.name),
-  };
-  if (options) {
-    headers["X-Badge-Options"] = encodeHeader(JSON.stringify(options));
-  }
-  const response = await fetchLocalWithRetry(path, {
-    method: "POST",
-    headers,
-    body: sourceFile,
-  });
+  const response = await cachedSourceRequest(path, file, options);
   if (!response.ok) {
     let message = `Local image processing failed (${response.status}).`;
     try {
@@ -3387,17 +4691,7 @@ async function fetchLocalWithRetry(path, options) {
 }
 
 async function localJsonRequest(path, file, options) {
-  const sourceFile = await materializeSourceFile(file);
-  const headers = {
-    "Content-Type": "application/octet-stream",
-    "X-Badge-Source-Name": encodeHeader(sourceFile.name),
-    "X-Badge-Options": encodeHeader(JSON.stringify(options || {})),
-  };
-  const response = await fetch(path, {
-    method: "POST",
-    headers,
-    body: sourceFile,
-  });
+  const response = await cachedSourceRequest(path, file, options);
   const responseText = await response.text();
   let detail;
   try {
@@ -3417,6 +4711,69 @@ async function localJsonRequest(path, file, options) {
     throw new Error(detail.error || `Local image fitting failed (${response.status}).`);
   }
   return detail;
+}
+
+async function cachedSourceRequest(path, file, options, retryCache = true) {
+  const registration = await ensureSourceRegistered(file);
+  const headers = {
+    "Content-Type": "application/octet-stream",
+    "X-Badge-Source-Name": encodeHeader(registration.sourceName),
+    "X-Badge-Source-Token": registration.token,
+  };
+  if (options) {
+    headers["X-Badge-Options"] = encodeHeader(JSON.stringify(options));
+  }
+  const response = await fetchLocalWithRetry(path, {
+    method: "POST",
+    headers,
+  });
+  if (response.status !== 410 || !retryCache) return response;
+  registration.registered = false;
+  registration.promise = null;
+  await ensureSourceRegistered(file);
+  return cachedSourceRequest(path, file, options, false);
+}
+
+async function ensureSourceRegistered(file) {
+  let registration = sourceRegistrationState.get(file);
+  if (!registration) {
+    registration = {
+      token: crypto.randomUUID(),
+      sourceName: file.name,
+      registered: false,
+      promise: null,
+    };
+    sourceRegistrationState.set(file, registration);
+  }
+  if (registration.registered) return registration;
+  if (!registration.promise) {
+    registration.promise = (async () => {
+      const sourceFile = await materializeSourceFile(file);
+      registration.sourceName = sourceFile.name;
+      const response = await fetchLocalWithRetry("/api/image/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Badge-Source-Name": encodeHeader(sourceFile.name),
+          "X-Badge-Source-Token": registration.token,
+        },
+        body: sourceFile,
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(
+          detail.error ||
+            `The local source cache rejected this image (${response.status}).`,
+        );
+      }
+      registration.registered = true;
+      return registration;
+    })().finally(() => {
+      registration.promise = null;
+    });
+  }
+  await registration.promise;
+  return registration;
 }
 
 async function materializeSourceFile(file) {
@@ -3505,13 +4862,36 @@ function updateSummary() {
     elements.summaryText.textContent = "No images selected.";
     return;
   }
-  const masks = items.reduce((total, item) => total + item.boxes.length, 0);
-  const errors = items.filter((item) => item.status === "error").length;
-  elements.summaryText.textContent =
-    `${items.length} image${items.length === 1 ? "" : "s"} · ` +
-    `${masks} mask${masks === 1 ? "" : "s"}` +
-    (errors ? ` · ${errors} error${errors === 1 ? "" : "s"}` : "");
+  elements.summaryText.textContent = reviewProgressSummary(items, activeIndex);
+  updateReviewAssistance();
   scheduleProjectCache();
+}
+
+function firstAttentionIndex() {
+  const first = items.findIndex(
+    (item) =>
+      !item.reviewConfirmed &&
+      Array.isArray(item.attention?.reasons) &&
+      item.attention.reasons.length > 0,
+  );
+  return first >= 0 ? first : 0;
+}
+
+function updateReviewAssistance() {
+  const queue = attentionQueueItems();
+  elements.attentionQueueButton.disabled = queue.length === 0;
+  elements.attentionQueueButton.classList.toggle(
+    "has-attention",
+    queue.length > 0,
+  );
+  elements.attentionQueueButton.textContent =
+    queue.length > 0
+      ? `Review ${queue.length} flagged ${queue.length === 1 ? "issue" : "issues"}`
+      : "All images ready for review";
+  elements.attentionQueueButton.title =
+    queue.length > 0
+      ? "Move to the next obvious processing or mask issue"
+      : "No obvious processing or mask issues were found";
 }
 
 function updateButtons() {
@@ -3524,6 +4904,7 @@ function updateButtons() {
     !modelWorkers.length ||
     !hasProcessableItems ||
     !hasPendingItems ||
+    !elements.outputFormatInput.value ||
     batchLocked;
   elements.runAllButton.textContent = items.some(
     (item) => checkpointStatusForItem(item) === "failed",
@@ -3543,6 +4924,10 @@ function updateButtons() {
   elements.exportAllButton.disabled =
     !serverReady || !hasDetectedItems || batchLocked;
   elements.exportAllButton.textContent = activeRun ? "Re-export all" : "Export all";
+  if (unreviewedDetectedItems().length > 0 && !running) {
+    elements.exportAllButton.textContent =
+      `Review ${unreviewedDetectedItems().length} before final export`;
+  }
   elements.loadModelButton.disabled =
     !serverReady || Boolean(modelWorkers.length) || batchLocked;
   elements.loadModelButton.hidden =
@@ -3555,6 +4940,7 @@ function updateButtons() {
     typeof window.showDirectoryPicker !== "function";
   elements.resetExportButton.disabled = !serverReady || batchLocked;
   elements.importRunButton.disabled = !serverReady || batchLocked;
+  elements.backToSetupButton.disabled = running;
   elements.quitAppButton.disabled = !serverReady || !lifecycleToken;
   elements.openExportFolderButton.disabled =
     !activeRun ||
@@ -3569,6 +4955,7 @@ function updateButtons() {
     elements.thresholdInput,
     elements.paddingInput,
     elements.redactionStyleInput,
+    elements.outputFormatInput,
     elements.strengthInput,
     elements.featherInput,
     elements.workerCountInput,
@@ -3576,6 +4963,7 @@ function updateButtons() {
     control.disabled = batchLocked;
   }
   updateCarouselControls();
+  updateReviewAssistance();
   if (items[activeIndex]) renderItemStatus(items[activeIndex]);
 }
 
@@ -3636,7 +5024,7 @@ function updateWorkerCountUI() {
     workerCapabilities(),
   );
   description +=
-    ` · ${INFERENCE_THREADS_PER_WORKER} inference thread${INFERENCE_THREADS_PER_WORKER === 1 ? "" : "s"} each · UI capacity reserved`;
+    ` · ${INFERENCE_THREADS_PER_WORKER} inference thread${INFERENCE_THREADS_PER_WORKER === 1 ? "" : "s"} each · isolated from UI`;
   if (preference === "4") {
     description += " · high-memory mode";
   } else if (preference === "auto") {
@@ -3744,19 +5132,24 @@ function updateExportTime() {
 
 function updateBatchTime() {
   if (batchTimer && batchStartedAt != null) {
+    const elapsed = formatDuration(performance.now() - batchStartedAt);
     elements.batchTime.textContent =
-      `Processing · ${formatDuration(performance.now() - batchStartedAt)}` +
+      `Processing · ${elapsed}` +
       (lastBatchWorkerCount
         ? ` · ${lastBatchWorkerCount} worker${lastBatchWorkerCount === 1 ? "" : "s"}`
         : "");
+    elements.progressTimer.textContent = `Elapsed · ${elapsed}`;
   } else if (lastBatchDurationMs != null) {
+    const duration = formatDuration(lastBatchDurationMs);
     elements.batchTime.textContent =
-      `Last batch · ${formatDuration(lastBatchDurationMs)}` +
+      `Last batch · ${duration}` +
       (lastBatchWorkerCount
         ? ` · ${lastBatchWorkerCount} worker${lastBatchWorkerCount === 1 ? "" : "s"}`
         : "");
+    elements.progressTimer.textContent = `Total · ${duration}`;
   } else {
     elements.batchTime.textContent = "Not started";
+    elements.progressTimer.textContent = "Elapsed · 0.0s";
   }
 }
 
@@ -3768,8 +5161,26 @@ function formatDuration(milliseconds) {
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
+async function timedItemStage(item, key, callback) {
+  const startedAt = performance.now();
+  try {
+    return await callback();
+  } finally {
+    item.stageTimings ||= {};
+    item.stageTimings[key] =
+      (Number(item.stageTimings[key]) || 0) + performance.now() - startedAt;
+  }
+}
+
 function yieldToUi() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  if (globalThis.scheduler?.postTask) {
+    return globalThis.scheduler.postTask(() => undefined, {
+      priority: "background",
+    });
+  }
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
 }
 
 function clamp(value, min, max) {

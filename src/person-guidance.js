@@ -1,13 +1,12 @@
 export function torsoRegionForPerson(person, imageWidth, imageHeight) {
   return clampRegion(
     {
-      left: person.x + person.width * 0.05,
-      top: person.y + person.height * 0.03,
-      width: person.width * 0.9,
-      // Lanyard cards often hang below the anatomical torso. Keep the region
-      // tied to the detected person while extending nearly to the bottom of
-      // cropped foreground people, where a large card can otherwise be lost.
-      height: person.height * 0.94,
+      left: person.x + person.width * 0.1,
+      top: person.y + person.height * 0.05,
+      width: person.width * 0.8,
+      // Keep global detections on the chest-to-waist area. Dedicated lanyard
+      // rescue runs can still search lower inside this person crop.
+      height: person.height * 0.72,
     },
     imageWidth,
     imageHeight,
@@ -15,7 +14,7 @@ export function torsoRegionForPerson(person, imageWidth, imageHeight) {
 }
 
 export function candidateInsideTorso(candidate, regions) {
-  if (!Array.isArray(regions) || regions.length === 0) return true;
+  if (!Array.isArray(regions) || regions.length === 0) return false;
   const centerX = candidate.x + candidate.width / 2;
   const centerY = candidate.y + candidate.height / 2;
   const candidateArea = Math.max(1, candidate.width * candidate.height);
@@ -38,7 +37,7 @@ export function candidateInsideTorso(candidate, regions) {
       Math.min(candidate.y + candidate.height, bottom) -
         Math.max(candidate.y, region.top),
     );
-    return (overlapWidth * overlapHeight) / candidateArea >= 0.6;
+    return (overlapWidth * overlapHeight) / candidateArea >= 0.75;
   });
 }
 
@@ -63,6 +62,41 @@ export function candidateLooksLikeCroppedForeground(
     areaRatio <= 0.14 &&
     aspect >= 0.38 &&
     aspect <= 1.55
+  );
+}
+
+export function lanyardBadgeSearchRegion(
+  lanyard,
+  imageWidth,
+  imageHeight,
+) {
+  const centerX = lanyard.x + lanyard.width / 2;
+  const searchWidth = Math.max(lanyard.width * 2.2, imageWidth * 0.18);
+  const top = lanyard.y + lanyard.height * 0.38;
+  const bottom = Math.max(
+    lanyard.y + lanyard.height * 1.45,
+    top + imageHeight * 0.18,
+  );
+  return clampRegion(
+    {
+      left: centerX - searchWidth / 2,
+      top,
+      width: searchWidth,
+      height: bottom - top,
+    },
+    imageWidth,
+    imageHeight,
+  );
+}
+
+export function candidateCenterInsideRegion(candidate, region) {
+  const centerX = candidate.x + candidate.width / 2;
+  const centerY = candidate.y + candidate.height / 2;
+  return (
+    centerX >= region.left &&
+    centerX <= region.left + region.width &&
+    centerY >= region.top &&
+    centerY <= region.top + region.height
   );
 }
 

@@ -18,6 +18,28 @@ const windowsIcon = path.join(
   "assets",
   "BadgeBlur.ico",
 );
+const macSigningEnabled = process.env.MACOS_SIGNING_ENABLED === "1";
+const macNotarizeConfig =
+  process.env.APPLE_API_KEY &&
+  process.env.APPLE_API_KEY_ID &&
+  process.env.APPLE_API_ISSUER
+    ? {
+        appleApiKey: process.env.APPLE_API_KEY,
+        appleApiKeyId: process.env.APPLE_API_KEY_ID,
+        appleApiIssuer: process.env.APPLE_API_ISSUER,
+      }
+    : process.env.APPLE_ID &&
+        process.env.APPLE_APP_SPECIFIC_PASSWORD &&
+        process.env.APPLE_TEAM_ID
+      ? {
+          appleId: process.env.APPLE_ID,
+          appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+          teamId: process.env.APPLE_TEAM_ID,
+        }
+      : null;
+const windowsCertificateConfigured =
+  Boolean(process.env.WINDOWS_CERTIFICATE_FILE) &&
+  Boolean(process.env.WINDOWS_CERTIFICATE_PASSWORD);
 
 export default {
   packagerConfig: {
@@ -30,6 +52,10 @@ export default {
     name: "Badge Blur",
     overwrite: true,
     prune: true,
+    ...(macSigningEnabled ? { osxSign: {} } : {}),
+    ...(macSigningEnabled && macNotarizeConfig
+      ? { osxNotarize: macNotarizeConfig }
+      : {}),
     ignore: [
       /^\/(?:\.git|\.github|\.cache|benchmark-output|demo-test-images|out|public|release-notes|releases|src|test-data|test-output)(?:\/|$)/,
       /^\/(?:CHANGELOG|README|TEST-REPORT)\.md$/,
@@ -42,6 +68,7 @@ export default {
   hooks: {
     postPackage: async (_forgeConfig, packageResult) => {
       if (packageResult.platform !== "darwin") return;
+      if (macSigningEnabled) return;
       for (const outputPath of packageResult.outputPaths) {
         const appPath = path.join(outputPath, "Badge Blur.app");
         if (!existsSync(appPath)) {
@@ -83,6 +110,12 @@ export default {
           "Local-only desktop app for detecting and redacting identification badges.",
         setupIcon: windowsIcon,
         noMsi: true,
+        ...(windowsCertificateConfigured
+          ? {
+              certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
+              certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
+            }
+          : {}),
       },
     },
   ],

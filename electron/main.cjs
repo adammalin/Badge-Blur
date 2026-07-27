@@ -310,23 +310,309 @@ function createMainWindow(url) {
     if (!smokeTest) return;
     clearTimeout(smokeDeadline);
     try {
-      const capabilities = await mainWindow.webContents.executeJavaScript(`({
-        appVersion: document.querySelector("meta[name='badge-blur-version']")?.content || null,
-        directoryPicker: typeof window.showDirectoryPicker === "function",
-        openExportFolderBridge:
-          typeof window.badgeBlurDesktop?.openExportFolder === "function",
-        manifestRecoveryBridge:
-          typeof window.badgeBlurDesktop?.recoverManifestSource === "function" &&
-          typeof window.badgeBlurDesktop?.readRecoveredSource === "function",
-        localOnly: location.hostname === "127.0.0.1",
-        userAgentIncludesElectron: navigator.userAgent.includes("Electron")
-      })`);
+      const capabilities = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const wait = (milliseconds) =>
+          new Promise((resolve) => setTimeout(resolve, milliseconds));
+        const result = {
+          appVersion:
+            document.querySelector("meta[name='badge-blur-version']")?.content ||
+            null,
+          directoryPicker: typeof window.showDirectoryPicker === "function",
+          openExportFolderBridge:
+            typeof window.badgeBlurDesktop?.openExportFolder === "function",
+          manifestRecoveryBridge:
+            typeof window.badgeBlurDesktop?.recoverManifestSource === "function" &&
+            typeof window.badgeBlurDesktop?.readRecoveredSource === "function",
+          localOnly: location.hostname === "127.0.0.1",
+          userAgentIncludesElectron: navigator.userAgent.includes("Electron"),
+          setupStageOnly:
+            document.body.dataset.workflowStage === "setup" &&
+            !document.querySelector("#setupPanel")?.hidden &&
+            document.querySelector("#reviewSection")?.hidden === true,
+          viewportFitted:
+            document.documentElement.scrollHeight <= window.innerHeight + 1
+        };
+
+        const smoke = window.__badgeBlurReviewSmoke;
+        if (!smoke) return { ...result, reviewSmokeAvailable: false };
+        await smoke.loadFixture();
+        const cacheStatus = await fetch("/api/status", {
+          cache: "no-store",
+        }).then((response) => response.json());
+        const sourceCacheActive =
+          cacheStatus.sourceCacheItems >= 2 &&
+          cacheStatus.sourceCacheBytes > 0;
+        await wait(25);
+        const batchStartViewerRect = document
+          .querySelector(".canvas-wrap")
+          ?.getBoundingClientRect();
+        const batchStartCanvasRect = document
+          .querySelector(".canvas-wrap canvas")
+          ?.getBoundingClientRect();
+        const photoCenteredAtBatchStart =
+          batchStartViewerRect &&
+          batchStartCanvasRect &&
+          Math.abs(
+            batchStartCanvasRect.left +
+              batchStartCanvasRect.width / 2 -
+              (batchStartViewerRect.left + batchStartViewerRect.width / 2),
+          ) <= 2;
+        document.querySelector(".fit-view")?.click();
+        await wait(25);
+        const initialViewerRect = document
+          .querySelector(".canvas-wrap")
+          ?.getBoundingClientRect();
+        const initialCanvasRect = document
+          .querySelector(".canvas-wrap canvas")
+          ?.getBoundingClientRect();
+        const photoCentered =
+          initialViewerRect &&
+          initialCanvasRect &&
+          Math.abs(
+            initialCanvasRect.left +
+              initialCanvasRect.width / 2 -
+              (initialViewerRect.left + initialViewerRect.width / 2),
+          ) <= 2;
+        const bodyStyle = getComputedStyle(document.body);
+        const backgroundDoesNotRepeat =
+          bodyStyle.backgroundRepeat === "no-repeat" &&
+          bodyStyle.backgroundAttachment === "fixed";
+        const reviewAssist = document.querySelector("#attentionQueueButton");
+        const neutralReadyForReview =
+          reviewAssist?.textContent.trim() === "All images ready for review" &&
+          reviewAssist.disabled &&
+          !reviewAssist.classList.contains("has-attention") &&
+          getComputedStyle(reviewAssist, "::before").content === "none";
+        const outputFormatOptions = [
+          ...document.querySelectorAll("#outputFormatInput option"),
+        ].map((option) => option.value);
+        const exportFormatSelectable =
+          ["original", "jpeg", "png", "tiff", "webp"].every((format) =>
+            outputFormatOptions.includes(format),
+          );
+        const outputFormatAskedDuringSetup =
+          !document.querySelector("#outputFormatInput")?.closest("details") &&
+          document.querySelector("#outputFormatInput option")?.value === "";
+        const progressMeta = document.querySelector(".progress-meta");
+        const progressTimer = document.querySelector("#progressTimer");
+        const processingTimerRightAligned =
+          getComputedStyle(progressMeta).display === "flex" &&
+          getComputedStyle(progressMeta).justifyContent === "space-between" &&
+          getComputedStyle(progressTimer).textAlign === "right";
+        const viewerWheelEvent = new WheelEvent("wheel", {
+          deltaY: 120,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.querySelector(".canvas-wrap")?.dispatchEvent(viewerWheelEvent);
+        const normalViewerWheelNotCaptured =
+          !viewerWheelEvent.defaultPrevented &&
+          getComputedStyle(document.querySelector(".canvas-wrap"))
+            .overscrollBehaviorY !== "contain";
+        document.querySelector(".next-mask")?.click();
+        document.querySelector(".next-mask")?.click();
+        await wait(25);
+        const navigationState = smoke.state();
+        const activeFilmstripItem = document.querySelector(
+          ".filmstrip-item.is-active",
+        );
+        const activeFilmstripStyle = activeFilmstripItem
+          ? getComputedStyle(activeFilmstripItem)
+          : null;
+        const filmstripSelectionVisible =
+          activeFilmstripItem?.getAttribute("aria-current") === "true" &&
+          activeFilmstripStyle?.zIndex === "2" &&
+          activeFilmstripStyle?.boxShadow !== "none";
+
+        const slider = document.querySelector(".mask-strength-input");
+        slider.value = "8";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(25);
+        const strengthState = smoke.state();
+        smoke.simulateOtherImageProcessing(true);
+        const concurrentEditing =
+          !document.querySelector(".mask-strength-input")?.disabled &&
+          !document.querySelector(".remove-box")?.disabled &&
+          !document.querySelector(".review-image")?.disabled &&
+          !document.querySelector(".export-one")?.disabled;
+        smoke.simulateOtherImageProcessing(false);
+
+        document.querySelector(".zoom-in")?.click();
+        await wait(25);
+        const zoomState = smoke.state();
+        const adobeStyleZoom =
+          zoomState.viewScaleMode === "zoom" &&
+          zoomState.viewZoom === 1.25 &&
+          document.querySelector(".zoom-level")?.textContent === "125%";
+        const integratedReviewState =
+          zoomState.reviewControl?.startsWith("Centered image") &&
+          document.querySelector(".review-image")?.textContent?.startsWith(
+            "Save, review",
+          );
+
+        document
+          .querySelector('[data-filmstrip-id^="image-1-"]')
+          ?.click();
+        await wait(75);
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Delete", bubbles: true })
+        );
+        const inactiveDeleteState = smoke.state();
+        document.querySelector(".next-mask")?.click();
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Delete", bubbles: true })
+        );
+        const activeDeleteState = smoke.state();
+
+        document
+          .querySelector('[data-filmstrip-id^="image-0-"]')
+          ?.click();
+        await wait(75);
+        document.querySelector(".fill-view")?.click();
+        const viewer = document.querySelector(".canvas-wrap");
+        const frame = document.querySelector(".viewer-frame");
+        const filmstrip = document.querySelector(".filmstrip");
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          if (
+            frame.getBoundingClientRect().height >
+              Number(frame.dataset.baseHeight || 0) + 2 &&
+            document.body.scrollHeight > window.innerHeight
+          ) {
+            break;
+          }
+          await wait(25);
+        }
+        const fillExpandsPage =
+          frame.getBoundingClientRect().height >
+            Number(frame.dataset.baseHeight || 0) + 2 &&
+          viewer.scrollHeight <= viewer.clientHeight + 2 &&
+          document.body.scrollHeight > window.innerHeight;
+        window.scrollTo(0, document.body.scrollHeight);
+        await wait(25);
+        const pageScrollWorks = window.scrollY > 0;
+        const filmstripJoinedToBatchBar =
+          filmstrip?.parentElement?.classList.contains("batch-dock") === true;
+        document.querySelector("#outputFormatInput").value = "jpeg";
+        document.querySelector(".export-one")?.click();
+        const manualSaveQueuedState = smoke.state();
+        const manualSaveFeedback =
+          /queued|saving/i.test(manualSaveQueuedState.exportStatus || "");
+        let manualSaveCompleted = false;
+        let manualJpegExport = false;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const saveState = smoke.state();
+          if (
+            !saveState.exportInFlight &&
+            saveState.exportQueueCount === 0 &&
+            /after preview ready/i.test(saveState.exportStatus || "")
+          ) {
+            manualSaveCompleted = true;
+            manualJpegExport = saveState.imageInfoOutputFormat === "jpeg";
+            break;
+          }
+          await wait(50);
+        }
+        document.querySelector(".review-image")?.click();
+        await wait(100);
+        const reviewAdvanceState = smoke.state();
+        const reviewSaveAndAdvance =
+          reviewAdvanceState.activeIndex === 1 &&
+          reviewAdvanceState.reviewConfirmations[0] === true;
+
+        return {
+          ...result,
+          reviewSmokeAvailable: true,
+          sourceCacheActive,
+          photoCenteredAtBatchStart,
+          photoCentered,
+          backgroundDoesNotRepeat,
+          neutralReadyForReview,
+          exportFormatSelectable,
+          outputFormatAskedDuringSetup,
+          processingTimerRightAligned,
+          normalViewerWheelNotCaptured,
+          badgeNavigation:
+            navigationState.inspectorTitle === "Badge 2 of 2",
+          filmstripSelectionVisible,
+          perBadgeStrength:
+            strengthState.selectedStrength === 8,
+          concurrentEditing,
+          adobeStyleZoom,
+          integratedReviewState,
+          manualSaveFeedback,
+          manualSaveCompleted,
+          manualJpegExport,
+          reviewSaveAndAdvance,
+          inactiveDeleteProtected:
+            inactiveDeleteState.boxCounts[0] === 2 &&
+            inactiveDeleteState.boxCounts[1] === 1,
+          activeDeleteScoped:
+            activeDeleteState.boxCounts[0] === 2 &&
+            activeDeleteState.boxCounts[1] === 0,
+          reviewProgress:
+            navigationState.summary.startsWith("Image 1 of 2"),
+          reviewStage:
+            navigationState.workflowStage === "review",
+          fillExpandsPage,
+          pageScrollWorks,
+          filmstripJoinedToBatchBar,
+          reviewUsesDocumentScroll:
+            document.documentElement.scrollHeight > window.innerHeight
+        };
+      })()`);
+      mainWindow.setSize(1100, 720);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      capabilities.shortWindowPhotoVisible =
+        await mainWindow.webContents.executeJavaScript(`(() => {
+          const viewer = document.querySelector(".viewer-frame");
+          const canvas = document.querySelector(".canvas-wrap canvas");
+          const viewerRect = viewer?.getBoundingClientRect();
+          const canvasRect = canvas?.getBoundingClientRect();
+          return (
+            document.body.scrollHeight > window.innerHeight &&
+            getComputedStyle(document.body).overflowY === "auto" &&
+            viewerRect?.height >= 380 &&
+            canvasRect?.width > 0 &&
+            canvasRect?.height > 0
+          );
+        })()`);
       const passed =
         capabilities.directoryPicker &&
         capabilities.openExportFolderBridge &&
         capabilities.manifestRecoveryBridge &&
         capabilities.localOnly &&
-        capabilities.userAgentIncludesElectron;
+        capabilities.userAgentIncludesElectron &&
+        capabilities.setupStageOnly &&
+        capabilities.viewportFitted &&
+        capabilities.reviewSmokeAvailable &&
+        capabilities.sourceCacheActive &&
+        capabilities.photoCenteredAtBatchStart &&
+        capabilities.photoCentered &&
+        capabilities.backgroundDoesNotRepeat &&
+        capabilities.neutralReadyForReview &&
+        capabilities.exportFormatSelectable &&
+        capabilities.outputFormatAskedDuringSetup &&
+        capabilities.processingTimerRightAligned &&
+        capabilities.normalViewerWheelNotCaptured &&
+        capabilities.badgeNavigation &&
+        capabilities.filmstripSelectionVisible &&
+        capabilities.perBadgeStrength &&
+        capabilities.concurrentEditing &&
+        capabilities.adobeStyleZoom &&
+        capabilities.integratedReviewState &&
+        capabilities.manualSaveFeedback &&
+        capabilities.manualSaveCompleted &&
+        capabilities.manualJpegExport &&
+        capabilities.reviewSaveAndAdvance &&
+        capabilities.inactiveDeleteProtected &&
+        capabilities.activeDeleteScoped &&
+        capabilities.reviewProgress &&
+        capabilities.reviewStage &&
+        capabilities.fillExpandsPage &&
+        capabilities.pageScrollWorks &&
+        capabilities.filmstripJoinedToBatchBar &&
+        capabilities.reviewUsesDocumentScroll &&
+        capabilities.shortWindowPhotoVisible;
       console.log(
         `BADGE_BLUR_ELECTRON_SMOKE ${JSON.stringify({ passed, ...capabilities })}`,
       );
@@ -359,7 +645,7 @@ function createMainWindow(url) {
     }, 30_000);
   }
 
-  void mainWindow.loadURL(url);
+  void mainWindow.loadURL(smokeTest ? `${url}?smoke=1` : url);
 }
 
 function isAllowedExternalUrl(value) {
@@ -386,7 +672,6 @@ async function beginQuit({ serverAlreadyStopped = false } = {}) {
   const forcedAppExit = setTimeout(() => {
     process.exit(requestedExitCode);
   }, 1_000);
-  forcedAppExit.unref();
   app.exit(requestedExitCode);
 }
 

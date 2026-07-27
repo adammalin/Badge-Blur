@@ -24,9 +24,9 @@ export function chooseAutoWorkerCount(
     if (memory != null) {
       // Chromium intentionally reports coarse, capped memory values. Treat
       // the highest signal (8 GB) as "memory not obviously constrained."
-      if (cores >= 24 && memory >= 8 && (score == null || score >= 5000)) {
-        count = 4;
-      } else if (cores >= 10 && memory >= 8) {
+      // Four workers remain available as an explicit choice, but Auto caps at
+      // two because measured throughput does not improve with four models.
+      if (cores >= 10 && memory >= 8) {
         count = 2;
       }
     } else if (cores >= 12) {

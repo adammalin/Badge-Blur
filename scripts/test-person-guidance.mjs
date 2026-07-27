@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  candidateCenterInsideRegion,
   candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
+  lanyardBadgeSearchRegion,
   torsoRegionForPerson,
 } from "../src/person-guidance.js";
 
@@ -11,10 +13,10 @@ const region = torsoRegionForPerson(
   600,
 );
 assert.deepEqual(region, {
-  left: 110,
-  top: 65,
-  width: 180,
-  height: 470,
+  left: 120,
+  top: 75,
+  width: 160,
+  height: 360,
 });
 assert.equal(
   candidateInsideTorso(
@@ -51,7 +53,7 @@ assert.equal(
     { x: 165, y: 410, width: 70, height: 60 },
     [region],
   ),
-  true,
+  false,
 );
 assert.equal(
   candidateInsideTorso(
@@ -65,7 +67,26 @@ assert.equal(
     { x: 430, y: 220, width: 120, height: 80 },
     [],
   ),
+  false,
+);
+const lanyardSearch = lanyardBadgeSearchRegion(
+  { x: 300, y: 120, width: 120, height: 280 },
+  800,
+  900,
+);
+assert.equal(
+  candidateCenterInsideRegion(
+    { x: 310, y: 360, width: 100, height: 130 },
+    lanyardSearch,
+  ),
   true,
+);
+assert.equal(
+  candidateCenterInsideRegion(
+    { x: 40, y: 360, width: 100, height: 130 },
+    lanyardSearch,
+  ),
+  false,
 );
 
 console.log(
@@ -76,6 +97,7 @@ console.log(
     croppedForegroundBadgeRetained: true,
     backgroundSignRejected: true,
     partialOverlapRejected: true,
-    noPersonFallbackPreserved: true,
+    noPersonCandidatesRejected: true,
+    lanyardBadgeSearchTargeted: true,
   }),
 );

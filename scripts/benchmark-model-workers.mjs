@@ -24,6 +24,7 @@ env.allowLocalModels = true;
 
 const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "badge-worker-benchmark-"));
 const previewPaths = [];
+const workers = [];
 try {
   for (const imageName of imageNames) {
     const source = await (await import("node:fs/promises")).readFile(
@@ -36,7 +37,7 @@ try {
   }
 
   console.log(`Loading worker 1 (${MODEL_ID})`);
-  const workers = [await loadDetector()];
+  workers.push(await loadDetector());
   await runDetector(workers[0], previewPaths[0]);
   const oneWorker = await timedRun(workers, previewPaths);
 
@@ -45,21 +46,39 @@ try {
   await runDetector(workers[1], previewPaths[0]);
   const twoWorkers = await timedRun(workers, previewPaths);
 
-  for (const worker of workers) await worker.dispose?.();
+  console.log("Loading workers 3 and 4");
+  workers.push(await loadDetector(), await loadDetector());
+  await Promise.all([
+    runDetector(workers[2], previewPaths[0]),
+    runDetector(workers[3], previewPaths[0]),
+  ]);
+  const fourWorkers = await timedRun(workers, previewPaths);
+
+  const timings = [
+    { count: 1, elapsed: oneWorker },
+    { count: 2, elapsed: twoWorkers },
+    { count: 4, elapsed: fourWorkers },
+  ];
+  const fastest = timings.reduce((best, result) =>
+    result.elapsed < best.elapsed ? result : best,
+  );
   console.log(
     JSON.stringify(
       {
         imageCount: previewPaths.length,
         oneWorkerSeconds: seconds(oneWorker),
         twoWorkerSeconds: seconds(twoWorkers),
-        speedup: Number((oneWorker / twoWorkers).toFixed(2)),
-        fasterMode: twoWorkers < oneWorker ? 2 : 1,
+        fourWorkerSeconds: seconds(fourWorkers),
+        twoWorkerSpeedup: Number((oneWorker / twoWorkers).toFixed(2)),
+        fourWorkerSpeedup: Number((oneWorker / fourWorkers).toFixed(2)),
+        fasterMode: fastest.count,
       },
       null,
       2,
     ),
   );
 } finally {
+  for (const worker of workers) await worker.dispose?.();
   await rm(temporaryDirectory, { recursive: true, force: true });
 }
 

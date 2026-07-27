@@ -16,8 +16,18 @@ assert.equal(
   2,
 );
 assert.equal(
-  chooseAutoWorkerCount({ hardwareConcurrency: 24, deviceMemory: 8 }, 100),
-  4,
+  chooseAutoWorkerCount(
+    { hardwareConcurrency: 24, deviceMemory: 8, computeScore: 6000 },
+    100,
+  ),
+  2,
+);
+assert.equal(
+  chooseAutoWorkerCount(
+    { hardwareConcurrency: 24, deviceMemory: 8, computeScore: 6000 },
+    4,
+  ),
+  2,
 );
 assert.equal(
   chooseAutoWorkerCount({ hardwareConcurrency: 24, deviceMemory: null }, 100),
@@ -40,4 +50,4 @@ assert.equal(
   1,
 );
 
-console.log(JSON.stringify({ passed: true, cases: 8 }));
+console.log(JSON.stringify({ passed: true, cases: 9 }));

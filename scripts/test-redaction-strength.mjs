@@ -52,10 +52,28 @@ const mosaicResult = await redactImage(source, "synthetic-badge.png", {
   strength: 6,
   featherPercent: 8,
 });
+const lowStrengthResult = await redactImage(source, "synthetic-badge.png", {
+  masks: [mask],
+  style: "gaussian",
+  strength: 2,
+  featherPercent: 8,
+});
+const perMaskOverrideResult = await redactImage(
+  source,
+  "synthetic-badge.png",
+  {
+    masks: [{ ...mask, redactionStrength: 12 }],
+    style: "gaussian",
+    strength: 2,
+    featherPercent: 8,
+  },
+);
 
 const sourcePixels = await rawGreyscale(source);
 const outputPixels = await rawGreyscale(result.image);
 const mosaicPixels = await rawGreyscale(mosaicResult.image);
+const lowStrengthPixels = await rawGreyscale(lowStrengthResult.image);
+const perMaskOverridePixels = await rawGreyscale(perMaskOverrideResult.image);
 const innerRegion = { left: 330, top: 250, width: 300, height: 190 };
 const outsideRegion = { left: 20, top: 20, width: 160, height: 80 };
 const sourceInnerEdges = meanEdgeEnergy(sourcePixels, width, innerRegion);
@@ -85,6 +103,16 @@ const mosaicOutsideDifference = meanAbsoluteDifference(
   width,
   outsideRegion,
 );
+const lowStrengthEdges = meanEdgeEnergy(
+  lowStrengthPixels,
+  width,
+  innerRegion,
+);
+const perMaskOverrideEdges = meanEdgeEnergy(
+  perMaskOverridePixels,
+  width,
+  innerRegion,
+);
 
 assert.ok(
   outputInnerEdges < sourceInnerEdges * 0.35,
@@ -110,6 +138,10 @@ assert.ok(
   mosaicOutsideDifference < 0.1,
   `Mosaic pixels well outside the mask changed unexpectedly; mean difference=${mosaicOutsideDifference.toFixed(4)}`,
 );
+assert.ok(
+  perMaskOverrideEdges < lowStrengthEdges * 0.7,
+  `Expected a per-mask strength override to blur more strongly; default=${lowStrengthEdges.toFixed(2)}, override=${perMaskOverrideEdges.toFixed(2)}`,
+);
 
 console.log(
   JSON.stringify(
@@ -131,6 +163,12 @@ console.log(
         ),
         insideMeanDifference: Number(mosaicInsideDifference.toFixed(2)),
         outsideMeanDifference: Number(mosaicOutsideDifference.toFixed(4)),
+      },
+      perMaskOverride: {
+        batchDefault: 2,
+        maskStrength: 12,
+        defaultEdgeEnergy: Number(lowStrengthEdges.toFixed(2)),
+        overrideEdgeEnergy: Number(perMaskOverrideEdges.toFixed(2)),
       },
     },
     null,

@@ -8,14 +8,14 @@
       content="default-src 'self'; img-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; worker-src 'self' blob:;"
     />
     <meta name="referrer" content="no-referrer" />
-    <meta name="badge-blur-version" content="0.21.0" />
+    <meta name="badge-blur-version" content="0.22.0" />
     <title>Badge Blur</title>
     <link rel="icon" type="image/png" href="/badge-blur.png" />
     <link rel="apple-touch-icon" href="/badge-blur.png" />
     <link rel="stylesheet" href="/src/ornl-design-tokens.css" />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
-  <body>
+  <body data-workflow-stage="setup">
     <header class="masthead">
       <div>
         <p class="eyebrow">Local-only computer vision MVP</p>
@@ -60,7 +60,11 @@
     </header>
 
     <main>
-      <section class="panel setup-panel" aria-labelledby="setup-title">
+      <section
+        id="setupPanel"
+        class="panel setup-panel workflow-stage"
+        aria-labelledby="setup-title"
+      >
         <div class="section-heading">
           <div>
             <p class="step">Step 1</p>
@@ -118,6 +122,32 @@
           />
         </div>
 
+        <div
+          id="outputFormatChoice"
+          class="setup-decision output-format-choice"
+        >
+          <div>
+            <strong>Choose output format</strong>
+            <small>
+              Redacted copies stay in the default nested exports folder.
+            </small>
+          </div>
+          <label>
+            <span class="sr-only">Output format</span>
+            <select id="outputFormatInput" required>
+              <option value="" selected disabled>Choose a format…</option>
+              <option value="original">Match each original format</option>
+              <option value="jpeg">JPEG · smaller, widely compatible</option>
+              <option value="png">PNG · lossless</option>
+              <option value="tiff">TIFF · lossless archive</option>
+              <option value="webp">WebP · compact modern format</option>
+            </select>
+            <small>
+              HEIC/HEIF originals use TIFF when matching the source.
+            </small>
+          </label>
+        </div>
+
         <details class="advanced-settings">
           <summary>
             <span>
@@ -154,8 +184,8 @@
             <label class="checkbox-control">
               <input id="enhancedInput" type="checkbox" checked />
               <span>
-                Enhanced detection and filtering
-                <small>Slower; keeps detections on people, searches each torso, and rejects strong non-badge matches.</small>
+                Targeted lanyard rescue
+                <small>Torso filtering is always on. This slower pass searches detected torsos again when a likely lanyard has no badge mask.</small>
               </span>
             </label>
 
@@ -266,25 +296,53 @@
             <strong id="exportTime">Not started</strong>
           </div>
         </div>
-        <aside class="instruction recovery-instruction">
-          <p>
-            <strong>Resume an interrupted batch:</strong> import its
-            <strong>badge-blur-checkpoint.json</strong>, choose that existing
-            run folder, then choose the original source folder.
-          </p>
-          <p>
-            <strong>Revise a completed batch:</strong> import its
-            <strong>badge-removal-manifest.json</strong>, then choose the
-            original source folder. Reviewed masks and settings are restored
-            locally.
-          </p>
-        </aside>
+        <details class="instruction recovery-instruction">
+          <summary>Previous-run and crash-recovery help</summary>
+          <div>
+            <p>
+              <strong>Resume an interrupted batch:</strong> import its
+              <strong>badge-blur-checkpoint.json</strong>, choose that existing
+              run folder, then choose the original source folder.
+            </p>
+            <p>
+              <strong>Revise a completed batch:</strong> import its
+              <strong>badge-removal-manifest.json</strong>, then choose the
+              original source folder. Reviewed masks and settings are restored
+              locally.
+            </p>
+          </div>
+        </details>
 
         <aside id="exportCompatibility" class="instruction warning" hidden>
           <strong>Bulk export unavailable in this browser:</strong>
           reopen the app in Microsoft Edge or Google Chrome. The app will not
           trigger hundreds of individual downloads.
         </aside>
+
+      </section>
+
+      <section
+        id="reviewSection"
+        class="review-section workflow-stage"
+        aria-labelledby="review-title"
+        hidden
+      >
+        <div class="section-heading">
+          <div>
+            <p class="step">Step 2</p>
+            <h2 id="review-title">Review detections</h2>
+          </div>
+          <div class="review-heading-actions">
+            <p id="summaryText" class="summary-text">No images selected.</p>
+            <button
+              id="backToSetupButton"
+              class="button small secondary"
+              type="button"
+            >
+              Change images or settings
+            </button>
+          </div>
+        </div>
 
         <div
           id="completionBanner"
@@ -304,25 +362,45 @@
             Open export folder
           </button>
         </div>
-      </section>
 
-      <section class="review-section" aria-labelledby="review-title">
-        <div class="section-heading">
+        <details class="instruction review-guide">
+          <summary>Mask editing help</summary>
+          <p>
+            Strong badge edges are fitted automatically after detection;
+            uncertain results remain rectangles. Click a mask to reveal its
+            four handles, then drag any corner to correct it. Drag across a
+            missed badge to add a mask. Click the red <strong>×</strong>, press
+            <kbd>Delete</kbd>, or use <strong>Remove</strong> in the selected
+            badge inspector to discard one.
+          </p>
+        </details>
+
+        <div class="review-assist" aria-label="Review assistance">
           <div>
-            <p class="step">Step 2</p>
-            <h2 id="review-title">Review detections</h2>
+            <button
+              id="attentionQueueButton"
+              class="button small attention-button"
+              type="button"
+              disabled
+            >
+              All images ready for review
+            </button>
           </div>
-          <p id="summaryText" class="summary-text">No images selected.</p>
+          <details class="shortcut-help">
+            <summary>Keyboard shortcuts</summary>
+            <p>
+              <kbd>←</kbd>/<kbd>→</kbd> previous or next ·
+              <kbd>N</kbd> next flagged issue ·
+              <kbd>V</kbd> Before/After ·
+              <kbd>M</kbd> edit or add a mask ·
+              <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll zoom ·
+              hold <kbd>Space</kbd> and drag to pan ·
+              <kbd>Delete</kbd> remove selected ·
+              <kbd>R</kbd> mark reviewed ·
+              <kbd>P</kbd> pause or resume
+            </p>
+          </details>
         </div>
-
-        <aside class="instruction">
-          <strong>Corner review:</strong> strong badge edges are fitted
-          automatically after detection; uncertain results remain rectangles.
-          Click a mask to reveal its four handles, then drag any corner to
-          correct it. Drag across a missed badge to add a mask. Click the red
-          <strong>×</strong>, press <kbd>Delete</kbd>, or use Remove selected
-          to discard one.
-        </aside>
 
         <nav
           id="pagination"
@@ -344,16 +422,16 @@
           <p>Select the synthetic demo folder to begin.</p>
         </div>
         <div id="reviewGrid" class="review-stage"></div>
-        <div
-          id="filmstrip"
-          class="filmstrip"
-          aria-label="Image thumbnail filmstrip"
-          hidden
-        ></div>
       </section>
     </main>
 
-    <aside class="batch-dock" aria-label="Persistent batch workflow">
+    <aside class="batch-dock" aria-label="Image strip and batch workflow">
+      <div
+        id="filmstrip"
+        class="filmstrip"
+        aria-label="Image thumbnail filmstrip"
+        hidden
+      ></div>
       <div class="batch-dock-inner">
         <div class="toolbar workflow-toolbar" aria-label="Batch workflow">
           <button id="runAllButton" class="button primary" disabled>
@@ -385,7 +463,10 @@
           <div class="progress-track">
             <div id="progressBar" class="progress-bar"></div>
           </div>
-          <p id="progressText" aria-live="polite"></p>
+          <div class="progress-meta">
+            <p id="progressText" aria-live="polite"></p>
+            <p id="progressTimer">Elapsed · 0.0s</p>
+          </div>
         </div>
       </div>
     </aside>

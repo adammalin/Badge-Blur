@@ -5,6 +5,13 @@ import { spawn } from "node:child_process";
 import sharp from "sharp";
 import decodeHeic from "heic-decode";
 import { exiftoolPath } from "exiftool-vendored";
+import { resolveRedactionStrength } from "../shared/redaction-strength.js";
+import {
+  exportExtension,
+  exportMimeType,
+  normalizeExportFormat,
+  resolveExportFormat,
+} from "../shared/export-format.js";
 
 const MAX_SOURCE_BYTES = 1024 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = new Set([
@@ -68,74 +75,135 @@ export async function cropPreview(sourceBuffer, sourceName, options = {}) {
 
 export async function redactImage(sourceBuffer, sourceName, options) {
   assertSource(sourceBuffer, sourceName);
-  const info = await inspectSource(sourceBuffer, sourceName);
+  const sourceInfo = await inspectSource(sourceBuffer, sourceName);
+  const exportPreference = normalizeExportFormat(options.outputFormat);
+  const outputFormat = resolveExportFormat(
+    exportPreference,
+    sourceInfo.sourceFormat,
+  );
+  const info = {
+    ...sourceInfo,
+    outputFormat,
+    outputExtension: exportExtension(outputFormat),
+    outputMimeType: exportMimeType(outputFormat),
+    converted:
+      sourceInfo.sourceFormat === "heif" ||
+      outputFormat !== sourceInfo.sourceFormat,
+    exportPreference,
+  };
   const masks = Array.isArray(options.masks)
     ? options.masks
     : Array.isArray(options.boxes)
       ? options.boxes
       : [];
   const style = options.style === "gaussian" ? "gaussian" : "mosaic";
-  const strength = clamp(Number(options.strength) || 3, 2, 12);
+  const strength = resolveRedactionStrength(null, options.strength);
   const featherPercent = clamp(Number(options.featherPercent) || 0, 0, 30);
   const source = await pixelSource(sourceBuffer, info);
-  const oriented = await source.png().toBuffer();
-  const overlays = [];
+  const oriented = await source.raw().toBuffer({ resolveWithObject: true });
+  const rawInput = () =>
+    sharp(oriented.data, {
+      raw: {
+        width: oriented.info.width,
+        height: oriented.info.height,
+        channels: oriented.info.channels,
+      },
+    });
+  const overlays = (
+    await mapWithConcurrency(masks, 2, async (inputMask) => {
+      const mask = normalizedMask(inputMask, info.width, info.height);
+      const maskStrength = resolveRedactionStrength(
+        inputMask.redactionStrength,
+        strength,
+      );
+      const featherPixels = Math.min(
+        96,
+        (Math.min(mask.width, mask.height) * featherPercent) / 100,
+      );
+      const gaussianSigma = clamp(
+        (Math.min(mask.width, mask.height) * maskStrength) / 100,
+        1.5,
+        100,
+      );
+      const effectSupport =
+        style === "gaussian"
+          ? Math.max(featherPixels, gaussianSigma)
+          : featherPixels;
+      const box = maskBounds(
+        mask.points,
+        info.width,
+        info.height,
+        effectSupport,
+      );
+      if (box.width < 1 || box.height < 1) return null;
+      let redactedPatch;
+      if (style === "gaussian") {
+        redactedPatch = await rawInput()
+          .extract(box)
+          .blur(gaussianSigma)
+          .png()
+          .toBuffer();
+      } else {
+        const mosaicDivisor = clamp(
+          Math.round(4 + maskStrength * 2),
+          8,
+          28,
+        );
+        const reducedWidth = Math.max(
+          1,
+          Math.round(box.width / mosaicDivisor),
+        );
+        const reducedHeight = Math.max(
+          1,
+          Math.round(box.height / mosaicDivisor),
+        );
+        // Sharp only applies one resize per pipeline. Buffer the downscaled image
+        // before enlarging it again so the privacy mosaic cannot be optimized away.
+        const reducedPatch = await rawInput()
+          .extract(box)
+          .resize(reducedWidth, reducedHeight, { fit: "fill" })
+          .png()
+          .toBuffer();
+        redactedPatch = await sharp(reducedPatch)
+          .resize(box.width, box.height, { fit: "fill", kernel: "nearest" })
+          .blur(0.5)
+          .png()
+          .toBuffer();
+      }
+      const polygonMask = polygonMaskSvg(mask.points, box, featherPixels);
+      const patch = await sharp(redactedPatch)
+        .composite([{ input: polygonMask, blend: "dest-in" }])
+        .png()
+        .toBuffer();
+      return { input: patch, left: box.left, top: box.top };
+    })
+  ).filter(Boolean);
 
-  for (const inputMask of masks) {
-    const mask = normalizedMask(inputMask, info.width, info.height);
-    const featherPixels = Math.min(
-      96,
-      (Math.min(mask.width, mask.height) * featherPercent) / 100,
-    );
-    const gaussianSigma = clamp(
-      (Math.min(mask.width, mask.height) * strength) / 100,
-      1.5,
-      100,
-    );
-    const effectSupport = style === "gaussian"
-      ? Math.max(featherPixels, gaussianSigma)
-      : featherPixels;
-    const box = maskBounds(mask.points, info.width, info.height, effectSupport);
-    if (box.width < 1 || box.height < 1) continue;
-    let redactedPatch;
-    if (style === "gaussian") {
-      redactedPatch = await sharp(oriented)
-        .extract(box)
-        .blur(gaussianSigma)
-        .png()
-        .toBuffer();
-    } else {
-      const mosaicDivisor = clamp(Math.round(4 + strength * 2), 8, 28);
-      const reducedWidth = Math.max(1, Math.round(box.width / mosaicDivisor));
-      const reducedHeight = Math.max(1, Math.round(box.height / mosaicDivisor));
-      // Sharp only applies one resize per pipeline. Buffer the downscaled image
-      // before enlarging it again so the privacy mosaic cannot be optimized away.
-      const reducedPatch = await sharp(oriented)
-        .extract(box)
-        .resize(reducedWidth, reducedHeight, { fit: "fill" })
-        .png()
-        .toBuffer();
-      redactedPatch = await sharp(reducedPatch)
-        .resize(box.width, box.height, { fit: "fill", kernel: "nearest" })
-        .blur(0.5)
-        .png()
-        .toBuffer();
-    }
-    const polygonMask = polygonMaskSvg(mask.points, box, featherPixels);
-    const patch = await sharp(redactedPatch)
-      .composite([{ input: polygonMask, blend: "dest-in" }])
-      .png()
-      .toBuffer();
-    overlays.push({ input: patch, left: box.left, top: box.top });
-  }
-
-  let output = sharp(oriented);
+  let output = rawInput();
   if (overlays.length) output = output.composite(overlays);
   output = output.keepMetadata();
   output = encodeForFormat(output, info.outputFormat);
 
   const encoded = await output.toBuffer();
   return withPreservedMetadata(encoded, sourceBuffer, sourceName, info);
+}
+
+async function mapWithConcurrency(values, concurrency, callback) {
+  const results = new Array(values.length);
+  let nextIndex = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, values.length) },
+      async () => {
+        while (nextIndex < values.length) {
+          const index = nextIndex;
+          nextIndex += 1;
+          results[index] = await callback(values[index], index);
+        }
+      },
+    ),
+  );
+  return results;
 }
 
 export async function fitMaskCorners(sourceBuffer, sourceName, options) {
@@ -151,7 +219,9 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
       height: Math.max(1, Math.round(info.height * fitScale)),
       fit: "fill",
     })
-    .greyscale()
+    // Preserve RGB during fitting. Badge edges can be strongly chromatic while
+    // having nearly identical luminance, which a grayscale-only pass misses.
+    .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -167,6 +237,7 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
       prepared.data,
       prepared.info.width,
       prepared.info.height,
+      prepared.info.channels,
       scaledBox,
     );
     if (!fitted.refined) {
@@ -479,7 +550,7 @@ function connectedColorComponents(mask, original, width, height) {
   return components;
 }
 
-function fitQuadrilateral(data, imageWidth, imageHeight, box) {
+function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
   if (box.width < 18 || box.height < 18) {
     return { refined: false, confidence: 0, reason: "Detection is too small to fit." };
   }
@@ -491,7 +562,7 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
     start: box.x + box.width * 0.08,
     end: box.x + box.width * 0.92,
   };
-  const left = strongestLine(data, imageWidth, imageHeight, {
+  const left = strongestLine(data, imageWidth, imageHeight, channels, {
     orientation: "vertical",
     sampleStart: verticalRange.start,
     sampleEnd: verticalRange.end,
@@ -499,8 +570,9 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
     positionEnd: box.x + box.width * 0.38,
     center: box.y + box.height / 2,
     span: box.width,
+    expectedPosition: box.x,
   });
-  const right = strongestLine(data, imageWidth, imageHeight, {
+  const right = strongestLine(data, imageWidth, imageHeight, channels, {
     orientation: "vertical",
     sampleStart: verticalRange.start,
     sampleEnd: verticalRange.end,
@@ -508,8 +580,9 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
     positionEnd: box.x + box.width * 1.28,
     center: box.y + box.height / 2,
     span: box.width,
+    expectedPosition: box.x + box.width,
   });
-  const top = strongestLine(data, imageWidth, imageHeight, {
+  const top = strongestLine(data, imageWidth, imageHeight, channels, {
     orientation: "horizontal",
     sampleStart: horizontalRange.start,
     sampleEnd: horizontalRange.end,
@@ -517,8 +590,9 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
     positionEnd: box.y + box.height * 0.38,
     center: box.x + box.width / 2,
     span: box.height,
+    expectedPosition: box.y,
   });
-  const bottom = strongestLine(data, imageWidth, imageHeight, {
+  const bottom = strongestLine(data, imageWidth, imageHeight, channels, {
     orientation: "horizontal",
     sampleStart: horizontalRange.start,
     sampleEnd: horizontalRange.end,
@@ -526,6 +600,7 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
     positionEnd: box.y + box.height * 1.28,
     center: box.x + box.width / 2,
     span: box.height,
+    expectedPosition: box.y + box.height,
   });
   const lines = [left, right, top, bottom];
   const minimumScore = Math.min(...lines.map((line) => line.score));
@@ -586,7 +661,7 @@ function fitQuadrilateral(data, imageWidth, imageHeight, box) {
   return { refined: true, confidence, points };
 }
 
-function strongestLine(data, width, height, options) {
+function strongestLine(data, width, height, channels, options) {
   const {
     orientation,
     sampleStart,
@@ -595,6 +670,7 @@ function strongestLine(data, width, height, options) {
     positionEnd,
     center,
     span,
+    expectedPosition,
   } = options;
   const sampleCount = 54;
   const positionStep = Math.max(1, span / 72);
@@ -613,7 +689,16 @@ function strongestLine(data, width, height, options) {
         const x = orientation === "vertical" ? offset : axis;
         const y = orientation === "vertical" ? axis : offset;
         values.push(
-          normalGradient(data, width, height, x, y, orientation, slope),
+          normalGradient(
+            data,
+            width,
+            height,
+            channels,
+            x,
+            y,
+            orientation,
+            slope,
+          ),
         );
       }
       values.sort((a, b) => a - b);
@@ -621,7 +706,11 @@ function strongestLine(data, width, height, options) {
       const percentile60 = values[Math.floor(values.length * 0.6)] || 0;
       const continuity =
         values.filter((value) => value >= 12).length / values.length;
-      const score = mean * (0.55 + continuity * 0.45) + percentile60 * 0.25;
+      const edgeScore =
+        mean * (0.55 + continuity * 0.45) + percentile60 * 0.25;
+      const proximity =
+        Math.abs(position - expectedPosition) / Math.max(1, span);
+      const score = edgeScore * clamp(1 - proximity * 0.18, 0.82, 1);
       if (score > best.score) best = { slope, position, score, center, orientation };
     }
   }
@@ -632,6 +721,7 @@ function normalGradient(
   data,
   width,
   height,
+  channels,
   x,
   y,
   orientation,
@@ -643,39 +733,52 @@ function normalGradient(
       ? { x: 1 / length, y: -slope / length }
       : { x: -slope / length, y: 1 / length };
   const radius = 1.6;
-  const first = sampleGray(
+  const first = sampleColor(
     data,
     width,
     height,
+    channels,
     x + normal.x * radius,
     y + normal.y * radius,
   );
-  const second = sampleGray(
+  const second = sampleColor(
     data,
     width,
     height,
+    channels,
     x - normal.x * radius,
     y - normal.y * radius,
   );
-  return Math.abs(first - second);
+  const red = first[0] - second[0];
+  const green = first[1] - second[1];
+  const blue = first[2] - second[2];
+  return Math.sqrt(red * red * 0.299 + green * green * 0.587 + blue * blue * 0.114);
 }
 
-function sampleGray(data, width, height, x, y) {
-  if (x < 1 || y < 1 || x >= width - 2 || y >= height - 2) return 0;
+function sampleColor(data, width, height, channels, x, y) {
+  if (x < 1 || y < 1 || x >= width - 2 || y >= height - 2) return [0, 0, 0];
   const left = Math.floor(x);
   const top = Math.floor(y);
   const dx = x - left;
   const dy = y - top;
-  const topLeft = data[top * width + left];
-  const topRight = data[top * width + left + 1];
-  const bottomLeft = data[(top + 1) * width + left];
-  const bottomRight = data[(top + 1) * width + left + 1];
-  return (
-    topLeft * (1 - dx) * (1 - dy) +
-    topRight * dx * (1 - dy) +
-    bottomLeft * (1 - dx) * dy +
-    bottomRight * dx * dy
-  );
+  const output = [];
+  for (let channel = 0; channel < 3; channel += 1) {
+    const sourceChannel = Math.min(channel, channels - 1);
+    const topLeft = data[(top * width + left) * channels + sourceChannel];
+    const topRight =
+      data[(top * width + left + 1) * channels + sourceChannel];
+    const bottomLeft =
+      data[((top + 1) * width + left) * channels + sourceChannel];
+    const bottomRight =
+      data[((top + 1) * width + left + 1) * channels + sourceChannel];
+    output.push(
+      topLeft * (1 - dx) * (1 - dy) +
+        topRight * dx * (1 - dy) +
+        bottomLeft * (1 - dx) * dy +
+        bottomRight * dx * dy,
+    );
+  }
+  return output;
 }
 
 function intersectEdgeLines(vertical, horizontal) {
@@ -690,6 +793,17 @@ function intersectEdgeLines(vertical, horizontal) {
 }
 
 function safestCornerBlend(original, fitted, paddingPercent, width, height) {
+  const center = original.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x / original.length,
+      y: sum.y + point.y / original.length,
+    }),
+    { x: 0, y: 0 },
+  );
+  const protectedCoverage = original.map((point) => ({
+    x: center.x + (point.x - center.x) * 0.76,
+    y: center.y + (point.y - center.y) * 0.76,
+  }));
   for (let amount = 1; amount >= 0; amount -= 0.05) {
     const candidate = fitted.map((point, index) => ({
       x: clamp(
@@ -704,7 +818,9 @@ function safestCornerBlend(original, fitted, paddingPercent, width, height) {
       ),
     }));
     const expanded = expandPoints(candidate, paddingPercent / 100, width, height);
-    if (original.every((point) => pointInPolygonOrEdge(point, expanded))) {
+    if (
+      protectedCoverage.every((point) => pointInPolygonOrEdge(point, expanded))
+    ) {
       return candidate;
     }
   }
@@ -835,8 +951,8 @@ async function inspectSource(sourceBuffer, sourceName) {
   return {
     sourceFormat: format,
     outputFormat,
-    outputExtension: extensionForFormat(outputFormat),
-    outputMimeType: mimeForFormat(outputFormat),
+    outputExtension: exportExtension(outputFormat),
+    outputMimeType: exportMimeType(outputFormat),
     converted: format === "heif",
     width,
     height,
@@ -900,18 +1016,18 @@ async function withPreservedMetadata(encoded, sourceBuffer, sourceName, info) {
       "-all:all",
       "-unsafe",
       "-icc_profile",
-      "-Preview:all=",
-      "-ThumbnailImage=",
-      "-PreviewImage=",
-      "-JpgFromRaw=",
-      "-OtherImage=",
-      "-EmbeddedImage=",
-      "-PhotoshopThumbnail=",
+      "--Preview:all",
+      "--ThumbnailImage",
+      "--PreviewImage",
+      "--JpgFromRaw",
+      "--OtherImage",
+      "--EmbeddedImage",
+      "--PhotoshopThumbnail",
+      "--ImageWidth",
+      "--ImageHeight",
+      "--ExifImageWidth",
+      "--ExifImageHeight",
       "-Orientation#=1",
-      "-ImageWidth=",
-      "-ImageHeight=",
-      "-ExifImageWidth=",
-      "-ExifImageHeight=",
       outputPath,
     ]);
     return { image: await readFile(outputPath), info };
@@ -986,26 +1102,6 @@ function normalizedFormat(metadata, sourceName) {
   if (extension === ".tif" || extension === ".tiff") return "tiff";
   if (extension === ".heic" || extension === ".heif") return "heif";
   return extension.slice(1);
-}
-
-function extensionForFormat(format) {
-  return {
-    jpeg: ".jpg",
-    png: ".png",
-    tiff: ".tif",
-    webp: ".webp",
-    avif: ".avif",
-  }[format];
-}
-
-function mimeForFormat(format) {
-  return {
-    jpeg: "image/jpeg",
-    png: "image/png",
-    tiff: "image/tiff",
-    webp: "image/webp",
-    avif: "image/avif",
-  }[format];
 }
 
 function normalizedMask(mask, width, height) {

@@ -6,6 +6,9 @@ export const DEFAULT_LABELS = [
 export const DEFAULT_THRESHOLD = 0.2;
 export const PERSON_THRESHOLD = 0.22;
 export const TORSO_THRESHOLD = 0.5;
+export const LANYARD_THRESHOLD = 0.18;
+export const LANYARD_BADGE_THRESHOLD = 0.24;
+export const LANYARD_PROMPT = "lanyard. neck strap. badge lanyard.";
 export const CLASSIFIER_MARGIN = 0.2;
 export const CLASSIFIER_LABELS = [
   "an employee identification badge hanging from a lanyard",

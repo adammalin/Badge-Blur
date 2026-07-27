@@ -1,7 +1,8 @@
 # MVP demo test report
 
-Date: 2026-07-24
-Source version: `0.21.0`; qualified packaged Electron release: `0.21.0`
+Date: 2026-07-27
+Source candidate: `0.22.0`; locally qualified packaged Mac candidate: `0.22.0`;
+Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -55,12 +56,21 @@ npm run test:badge-production
 | 0.8.0 color-assisted | 20/45 | 20 | 8 | 44.4% | 71.4% |
 | 0.9.x Grounding DINO | 28/45 | 28 | 10 | 62.2% | 73.7% |
 | 0.10.0–0.13.0 enhanced torso + CLIP | 34/45 | 34 | 13 | 75.6% | 72.3% |
-| **0.14.0 conservative global CLIP filter** | **34/45** | **34** | **8** | **75.6%** | **81.0%** |
+| 0.14.0 conservative global CLIP filter | 34/45 | 34 | 8 | 75.6% | 81.0% |
+| **0.22.0 strict detected-torso gate** | **34/45** | **34** | **4** | **75.6%** | **89.5%** |
 | Experimental person-guided | 28/45 | 27 | 19 | 62.2% | 58.7% |
 
-The final enhanced production report was reproduced for 0.21.0 under
-`test-output/evaluation-20260724-173554-2d89e5a6/`. The v0.9 Grounding DINO
-report is under `test-output/evaluation-20260723-150039-0867c220/`.
+The final torso-gated production report was reproduced after the performance
+changes for the 0.22.0 candidate under
+`test-output/evaluation-20260727-121538-ab1c9b89/`, with 34/45
+covered points, 34 matching masks, four false masks, 75.6% recall, 89.5%
+precision, and 33 of 38 masks safely corner-fitted. The prior grayscale-edge
+report fitted 32 of 38 masks under
+`test-output/evaluation-20260727-105550-0e235217/`. The pre-gate report is under
+`test-output/evaluation-20260727-102049-15eebbc4/`; the previous qualified
+0.21.0 report is under `test-output/evaluation-20260724-173554-2d89e5a6/`.
+The v0.9 Grounding DINO report is under
+`test-output/evaluation-20260723-150039-0867c220/`.
 
 This test rejects unattended use: 11 reviewed badge points were still missed.
 Unconstrained torso crops, tiled Grounding DINO, and the earlier color assist
@@ -227,23 +237,26 @@ the calling installer workflow instead of leaving a ghost process.
 Version 0.13.0 adds a bounded worker pool with Auto/1/2/4 choices. Deterministic
 tests confirm that six queued items with two workers reach exactly two active
 tasks, process every item once, and report stable worker assignments. Worker
-policy tests cover low-resource, two-worker, four-worker, unknown-memory,
-slow-compute, and small-batch caps.
+policy tests cover low-resource, Auto two-worker, manual four-worker,
+unknown-memory, slow-compute, and small-batch caps.
 
 The actual quantized Grounding DINO model was benchmarked locally on four
 synthetic images after warming both sessions:
 
 | Mode | Time | Relative throughput |
 | --- | ---: | ---: |
-| 1 model worker | 2.58 s | 1.00× |
-| 2 model workers | 2.48 s | 1.04× |
+| 1 model worker | 2.52 s | 1.00× |
+| 2 model workers | 2.48 s | 1.02× |
+| 4 model workers | 2.55 s | 0.99× |
 
 The small model-only gain shows why the app also pipelines stages: detection
 of the next image can overlap the previous image's local Sharp
 redaction/metadata work, while file and manifest writes remain serialized.
 The live browser capability check reported 18 logical processors and a 32 GB
-memory signal, and Auto selected two workers. Four-worker mode remains a
-manual/high-memory qualification option.
+memory signal, and Auto selected two workers. The 0.22.0 benchmark confirmed
+that four loaded models were slightly slower than two on this workstation, so
+Auto now caps at two. Four-worker mode remains a manual/high-memory
+qualification option.
 
 The complete 18-photo production-path regression was rerun after the worker
 changes and remained unchanged at 34/45 covered badge references (75.6%
@@ -301,6 +314,25 @@ packaged local runtime:
 | WebP | WebP | Pass |
 | AVIF | AVIF | Pass |
 | HEIC/HEIF | TIFF | Pass |
+
+The 0.22.0 selectable-output regression also converts one synthetic source to
+JPEG, PNG, TIFF, and WebP and verifies each encoded format. The Electron smoke
+selects JPEG, performs **Save changes**, waits for the serialized export to
+finish, and verifies that the runtime reports JPEG output. A real
+8448 × 6336 JPEG with five masks completed the decode/redaction/JPEG encode
+path in 5.01 seconds on the development Mac.
+
+The full-resolution source is registered once in a bounded loopback cache and
+reused by preview, crop, corner-fit, redaction, and metadata requests. The
+redactor decodes oriented pixels once and processes independent mask patches
+with bounded concurrency while preserving final overlay order. Electron smoke
+verified that cached requests were active. Per-image stage durations are
+stored in the checkpoint and final manifest.
+
+A proposed fused person-and-badge model prompt was benchmarked and rejected:
+the shipped Grounding DINO ONNX graph accepts only one text batch, and a
+period-delimited combined prompt returned only the first concept, dropping
+frozen-set badge detections. The production two-pass prompts remain unchanged.
 
 Synthetic Artist, XMP Description, and IPTC Keywords fields survived the
 round trip in applicable formats. Output Orientation was normalized to
@@ -382,14 +414,21 @@ Version 0.7.0 widened the supported tilt search and changed edge scoring to
 sample the image gradient perpendicular to each candidate line with bilinear
 interpolation. This corrected visibly tilted cases without changing the frozen
 10-fit/1-fallback safety result.
+Version 0.22.0 preserves full-color edge contrast, mildly favors edges near
+the detector boundary, and protects an inset coverage region while allowing a
+loose detection to tighten further. A synthetic equal-luminance color boundary
+was fitted with a maximum 1.68-pixel corner error. On the 18-photo production
+set, accepted corner fits increased from 32 to 33 of 38 masks without changing
+recall, precision, or false-mask count.
 The outdoor glare/motion badge produced a candidate that was too small and
 correctly retained its rectangle. A same-sized control region without a badge
 also failed the edge-continuity threshold and retained its rectangle.
 
-For every accepted fit, the safety blend verified that the mask after the
-configured 18% expansion still contained all four corners of the original
-OWLv2 detection. This synthetic result validates the fitter/fallback behavior,
-not production accuracy on cleared photography. Fit confidence, reason,
+For every accepted fit, the safety blend verifies that the expanded mask still
+contains a protected inset of the original detection. This avoids overfitting
+to an internal shirt or badge detail while allowing a loose detector rectangle
+to follow the card more closely. This synthetic result validates the
+fitter/fallback behavior, not unattended accuracy. Fit confidence, reason,
 original detection bounds, polygon points, and user-adjustment state are
 recorded in the version 5 manifest.
 
@@ -401,6 +440,44 @@ The Electron smoke test confirms that the bundled Chromium runtime exposes the
 directory picker. A normal interactive folder choice and multi-file write must
 still be rechecked on each target operating system because automated CI cannot
 approve a native operating-system picker.
+
+## Version 0.22.0 release-candidate qualification
+
+The 0.22.0 source and Apple-silicon Mac candidate passed:
+
+- all 20 deterministic tests through `npm test`;
+- a full-color equal-luminance corner-fit regression with a maximum corner
+  error of 1.68 pixels, while retaining 10 of 11 safe benchmark fits;
+- production build and source Electron smoke checks;
+- packaged-app review smokes covering per-badge blur strength, badge
+  navigation, active-image-only deletion, concurrent editing, manual-save
+  feedback, integrated image review, visible filmstrip selection,
+  cursor-centered zoom, Fit in window, page-expanding Fill width, document
+  scrolling, exact fitted-photo centering both at batch start and after
+  navigation, a fixed non-repeating page gradient, a filmstrip joined to the
+  batch rail, short-window photo visibility, and neutral Ready for review
+  styling without a caution icon, source-cache reuse, selectable JPEG saving,
+  right-aligned processing-time display, required setup-stage output-format
+  choice, and save/review/advance navigation;
+- the strict torso-gated 18-image production regression at 75.6% recall and
+  89.5% precision;
+- production-only and complete dependency audits with zero reported
+  vulnerabilities;
+- strict deep verification of the locally applied ad-hoc Mac signature; and
+- SHA-256 verification of the 0.22.0 DMG and ZIP release candidates.
+
+The Mac artifacts are:
+
+```text
+24c8ad34656a660a3a9e985024eb5917f883e71ae0d31fd9604fe39210b65062  Badge-Blur-Mac-arm64-v0.22.0.dmg
+53f3af55c74aeedff78f677c59c3eb5605b9d92c1477afa0de384b888f50364d  Badge-Blur-Mac-arm64-v0.22.0.zip
+```
+
+The Windows x64 installer and packaged-runtime smoke remain pending the
+matched-platform CI job. Organization-controlled certificate credentials are
+also still required to activate trusted Windows signing and Apple Developer ID
+signing/notarization; the release configuration supports those credentials but
+none were used for this local Mac candidate.
 
 ## Qualification status
 

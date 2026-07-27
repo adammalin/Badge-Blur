@@ -39,6 +39,10 @@ import {
   classifierEvidence,
   globalClassifierDecision,
 } from "../src/classifier-utils.js";
+import {
+  candidateInsideTorso,
+  torsoRegionForPerson,
+} from "../src/person-guidance.js";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const packageInfo = JSON.parse(
@@ -264,6 +268,19 @@ for (let index = 0; index < imageNames.length; index += 1) {
         personCount: 0,
         contextRegion: null,
       };
+  const torsoGlobalBoxes = torsoGuided
+    ? globalBoxes.filter((box) =>
+        candidateInsideTorso(
+          box,
+          tileResults.personRegions.map((region) => ({
+            left: region.x,
+            top: region.y,
+            width: region.width,
+            height: region.height,
+          })),
+        ),
+      )
+    : globalBoxes;
   const colorResults = personGuided || colorAssisted
     ? await detectColorBadgeCandidates(source, imageName)
     : { candidates: [] };
@@ -328,7 +345,7 @@ for (let index = 0; index < imageNames.length; index += 1) {
       ).retained
     : [];
   const modelEvidenceBoxes = [
-    ...globalBoxes,
+    ...torsoGlobalBoxes,
     ...personModelBoxes,
     ...classifiedTorsoBoxes,
   ];
@@ -382,7 +399,7 @@ for (let index = 0; index < imageNames.length; index += 1) {
       detectionPass: "color",
     }));
   const boxes = torsoGuided
-    ? mergeGlobalWithTorsoRescues(globalBoxes, classifiedTorsoBoxes)
+    ? mergeGlobalWithTorsoRescues(torsoGlobalBoxes, classifiedTorsoBoxes)
     : personGuided
     ? refineHybridDetections(modelEvidenceBoxes, colorBoxes)
     : colorAssisted
@@ -877,12 +894,7 @@ async function detectGroundingDinoTorsoCrops({
         height: person.height * personScaleY,
       };
       return boundedCrop(
-        {
-          left: fullPerson.x - fullPerson.width * 0.12,
-          top: fullPerson.y + fullPerson.height * 0.08,
-          width: fullPerson.width * 1.24,
-          height: fullPerson.height * 0.62,
-        },
+        torsoRegionForPerson(fullPerson, width, height),
         width,
         height,
       );

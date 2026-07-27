@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import sharp from "sharp";
 import { fitMaskCorners } from "./image-runtime.mjs";
 
 const report = JSON.parse(
@@ -40,4 +41,67 @@ if (detected !== 11 || fitted !== 10 || fallback !== 1) {
   );
 }
 
-console.log(JSON.stringify({ detected, fitted, fallback, files }, null, 2));
+const chromaticSource = await sharp({
+  create: {
+    width: 300,
+    height: 220,
+    channels: 3,
+    background: { r: 0, g: 100, b: 0 },
+  },
+})
+  .composite([
+    {
+      input: Buffer.from(
+        '<svg width="300" height="220"><rect x="100" y="80" width="100" height="70" fill="rgb(196,0,0)"/></svg>',
+      ),
+    },
+  ])
+  .png()
+  .toBuffer();
+const chromaticFit = await fitMaskCorners(
+  chromaticSource,
+  "equal-luminance-color-edge.png",
+  {
+    boxes: [{ x: 88, y: 68, width: 124, height: 94 }],
+    paddingPercent: 18,
+  },
+);
+if (!chromaticFit.masks[0]?.refined) {
+  throw new Error(
+    `Corner-fit regression: chromatic badge edge was not refined: ${chromaticFit.masks[0]?.reason}`,
+  );
+}
+const expectedChromaticCorners = [
+  { x: 100, y: 80 },
+  { x: 200, y: 80 },
+  { x: 200, y: 150 },
+  { x: 100, y: 150 },
+];
+const chromaticCornerError = Math.max(
+  ...chromaticFit.masks[0].points.map((point, index) =>
+    Math.hypot(
+      point.x - expectedChromaticCorners[index].x,
+      point.y - expectedChromaticCorners[index].y,
+    ),
+  ),
+);
+if (chromaticCornerError > 3) {
+  throw new Error(
+    `Corner-fit regression: chromatic badge corners missed by ${chromaticCornerError.toFixed(2)}px.`,
+  );
+}
+
+console.log(
+  JSON.stringify(
+    {
+      detected,
+      fitted,
+      fallback,
+      chromaticEdgeFit: true,
+      chromaticCornerError: Number(chromaticCornerError.toFixed(2)),
+      files,
+    },
+    null,
+    2,
+  ),
+);

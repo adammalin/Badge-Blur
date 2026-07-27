@@ -28,7 +28,7 @@ const packageRoot = resolve(scriptDirectory, "..");
 const appVersion = JSON.parse(
   readFileSync(resolve(packageRoot, "package.json"), "utf8"),
 ).version;
-const apiVersion = 6;
+const apiVersion = 7;
 const lifecycleToken = randomBytes(32).toString("hex");
 const launcherParentPid = positiveInteger(
   process.env.BADGE_REMOVER_PARENT_PID,
@@ -37,6 +37,10 @@ const pidFile = process.env.BADGE_REMOVER_PID_FILE || "";
 let activeServer = null;
 let parentWatch = null;
 let shutdownStarted = false;
+const sourceCache = new Map();
+const MAX_SOURCE_CACHE_BYTES = 512 * 1024 * 1024;
+const MAX_SOURCE_CACHE_ITEMS = 12;
+let sourceCacheBytes = 0;
 
 if (!existsSync(root)) {
   console.error(`The packaged app is missing: ${root}`);
@@ -67,6 +71,8 @@ if (!existsSync(root)) {
         lifecycleToken,
         launcherParentPid,
         processId: process.pid,
+        sourceCacheItems: sourceCache.size,
+        sourceCacheBytes,
       });
       return;
     }
@@ -89,8 +95,39 @@ if (!existsSync(root)) {
 
     if (request.method === "POST" && requestPath.startsWith("/api/image/")) {
       try {
-        const sourceName = decodeRequestHeader(request.headers["x-badge-source-name"]);
-        const source = await readRequestBody(request);
+        const sourceToken = String(
+          request.headers["x-badge-source-token"] || "",
+        );
+        let sourceName = decodeRequestHeader(
+          request.headers["x-badge-source-name"],
+        );
+        if (requestPath === "/api/image/register") {
+          if (!/^[a-zA-Z0-9-]{16,128}$/.test(sourceToken)) {
+            throw new Error("The source-cache token is invalid.");
+          }
+          const source = await readRequestBody(request);
+          cacheSource(sourceToken, sourceName, source);
+          sendJson(response, {
+            cached: true,
+            sourceBytes: source.length,
+            cacheItems: sourceCache.size,
+          });
+          return;
+        }
+        const cached = sourceToken ? cachedSource(sourceToken) : null;
+        if (sourceToken && !cached) {
+          sendJson(
+            response,
+            {
+              error: "The local source cache expired. Register the image again.",
+              code: "SOURCE_CACHE_MISS",
+            },
+            410,
+          );
+          return;
+        }
+        const source = cached?.source || (await readRequestBody(request));
+        sourceName = cached?.sourceName || sourceName;
         if (requestPath === "/api/image/decode") {
           const options = JSON.parse(
             decodeRequestHeader(request.headers["x-badge-options"]) || "{}",
@@ -285,6 +322,37 @@ function requestShutdown(reason) {
 function decodeRequestHeader(value) {
   if (!value) return "";
   return Buffer.from(String(value), "base64url").toString("utf8");
+}
+
+function cacheSource(token, sourceName, source) {
+  const previous = sourceCache.get(token);
+  if (previous) sourceCacheBytes -= previous.source.length;
+  sourceCache.delete(token);
+  sourceCache.set(token, {
+    sourceName,
+    source,
+    lastUsedAt: Date.now(),
+  });
+  sourceCacheBytes += source.length;
+  while (
+    (sourceCache.size > MAX_SOURCE_CACHE_ITEMS ||
+      sourceCacheBytes > MAX_SOURCE_CACHE_BYTES) &&
+    sourceCache.size > 1
+  ) {
+    const oldestToken = sourceCache.keys().next().value;
+    const oldest = sourceCache.get(oldestToken);
+    sourceCache.delete(oldestToken);
+    sourceCacheBytes -= oldest.source.length;
+  }
+}
+
+function cachedSource(token) {
+  const cached = sourceCache.get(token);
+  if (!cached) return null;
+  cached.lastUsedAt = Date.now();
+  sourceCache.delete(token);
+  sourceCache.set(token, cached);
+  return cached;
 }
 
 function readRequestBody(request) {
