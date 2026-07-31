@@ -1,8 +1,8 @@
 # MVP demo test report
 
 Date: 2026-07-31
-Source candidate: `0.22.4`; locally qualified packaged Mac candidate: `0.22.4`;
-Windows candidate pending matched-platform CI
+Source candidate: `0.22.4`; qualified packaged Mac and Windows candidates:
+`0.22.4`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
 Model SHA-256:
@@ -544,9 +544,16 @@ The locally qualified Mac artifacts are:
 
 The final 0.22.4 increment changes only workflow guidance; the installer also
 carries forward the separately qualified 0.22.2 detection and edge-redaction
-fixes and the 0.22.3 corner-fitting and export-workflow fixes. The Windows x64
-installer and its packaged-runtime smoke are qualified separately on the
-matched-platform release CI runner before GitHub publishes the release.
+fixes and the 0.22.3 corner-fitting and export-workflow fixes. Matched-platform
+release CI run `30664480581` passed the deterministic suite, lifecycle test,
+packaged-runtime smoke, and artifact verification on both macOS and Windows,
+then published the following checksummed artifacts:
+
+```text
+127742c558cff51a09337e98c322d8c6e976b6b54efc33affdd2ced6cded3ae4  Badge-Blur-Mac-arm64-v0.22.4.dmg
+7203993cf5a9cbf7e3d183363af372e956a13ca95d248bb59fb6b5cbe6db75a6  Badge-Blur-Mac-arm64-v0.22.4.zip
+3f0a7c87f8224d02dca08aac56497458cb19b6d5ba8692f6826f6892ebc63997  Badge-Blur-Windows-x64-Setup-v0.22.4.exe
+```
 
 ### Version 0.22.3 source-release qualification
 
