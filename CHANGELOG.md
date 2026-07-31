@@ -8,8 +8,6 @@
   the guidance static.
 - Publish matched-platform Apple-silicon Mac and Windows x64 installers after
   packaged-runtime smoke tests and checksum verification.
-- Center fit-mode photos against the rendered content viewport so native
-  Windows scrollbar geometry cannot shift the image or invalidate review.
 
 ## 0.22.3 — 2026-07-31
 
