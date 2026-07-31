@@ -294,8 +294,8 @@ software/model files. Image processing after setup is local.
 
 ## Installers and portable packages
 
-The latest review, re-export, preview-refresh, and detection improvements are
-available in the `v0.22.1` GitHub release. That
+The latest review, re-export, preview-refresh, detection, and guided-workflow
+improvements are available in the `v0.22.4` GitHub release. That
 release includes the Apple-silicon Mac ZIP and DMG, a Windows x64 installer,
 and SHA-256 checksums. The source instructions remain available for testers
 whose managed computers cannot install unsigned applications.
@@ -303,8 +303,8 @@ whose managed computers cannot install unsigned applications.
 ### Install and test on macOS
 
 The current Mac package supports Apple-silicon Macs running macOS 13 or later.
-Download `Badge-Blur-Mac-arm64-v0.22.1.dmg` from the
-[v0.22.1 release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.22.1).
+Download `Badge-Blur-Mac-arm64-v0.22.4.dmg` from the
+[v0.22.4 release](https://github.com/adammalin/Badge-Blur/releases/tag/v0.22.4).
 The matching ZIP also works, but the DMG is the preferred test package.
 
 1. Download the Mac artifact and unzip the GitHub artifact if necessary.

@@ -6,6 +6,8 @@
   restrained glow and occasional bounce on the currently actionable **Start
   batch** or **Save, review & next** control. Reduced-motion preferences keep
   the guidance static.
+- Publish matched-platform Apple-silicon Mac and Windows x64 installers after
+  packaged-runtime smoke tests and checksum verification.
 
 ## 0.22.3 — 2026-07-31
 

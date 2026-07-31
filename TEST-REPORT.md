@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-31
-Source candidate: `0.22.4`; locally qualified packaged Mac candidate: `0.22.1`;
+Source candidate: `0.22.4`; locally qualified packaged Mac candidate: `0.22.4`;
 Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -517,7 +517,7 @@ The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
 
-### Version 0.22.4 source-release qualification
+### Version 0.22.4 installer-release qualification
 
 The local source candidate tested on 2026-07-31 passed:
 
@@ -529,11 +529,24 @@ The local source candidate tested on 2026-07-31 passed:
   actionable **Save, review & next** guidance, and removal of the edge effect
   when processing finishes; and
 - static guidance with animation disabled when the operating system requests
-  reduced motion.
+  reduced motion;
+- the complete packaged Apple-silicon Electron workflow smoke, including
+  local-only startup and clean shutdown; and
+- strict deep verification of the local ad-hoc signature plus SHA-256
+  verification of the local DMG and ZIP candidates.
 
-This release changes only workflow guidance and does not alter detection,
-mask fitting, source images, or exported pixels. Packaged macOS and Windows
-installers remain at 0.22.1 and were not rebuilt.
+The locally qualified Mac artifacts are:
+
+```text
+6b83ca3bab54cf988c0947bd79d377bcf2dd6568d513f2b7d04e80abfbabf724  Badge-Blur-Mac-arm64-v0.22.4.dmg
+7dd982d64cc61a1870460b0cf8d086dc9c0239061634dbad538e3be4baa37e34  Badge-Blur-Mac-arm64-v0.22.4.zip
+```
+
+The final 0.22.4 increment changes only workflow guidance; the installer also
+carries forward the separately qualified 0.22.2 detection and edge-redaction
+fixes and the 0.22.3 corner-fitting and export-workflow fixes. The Windows x64
+installer and its packaged-runtime smoke are qualified separately on the
+matched-platform release CI runner before GitHub publishes the release.
 
 ### Version 0.22.3 source-release qualification
 
