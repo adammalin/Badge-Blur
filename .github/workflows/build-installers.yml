@@ -137,14 +137,11 @@ jobs:
           $smokePassed = $stdoutContent.Contains(
             'BADGE_BLUR_ELECTRON_SMOKE {"passed":true'
           )
-          $shutdownPassed = $stdoutContent.Contains(
-            "Badge Blur shutting down: user request"
-          )
-          if (-not $smokePassed -or -not $shutdownPassed) {
-            throw "Packaged Electron smoke markers were incomplete."
+          if (-not $smokePassed) {
+            throw "Packaged Electron smoke result was incomplete."
           }
           if ($process.ExitCode -ne 0) {
-            Write-Warning "Electron returned Windows exit code $($process.ExitCode) after its successful smoke test."
+            throw "Electron returned Windows exit code $($process.ExitCode) after its smoke test."
           }
 
       - name: Verify Windows artifact
