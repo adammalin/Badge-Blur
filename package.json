@@ -39,6 +39,7 @@
     "test:mask-controls": "node scripts/test-mask-controls.mjs",
     "test:edit-revisions": "node scripts/test-edit-revisions.mjs",
     "test:lifecycle": "node scripts/test-server-lifecycle.mjs",
+    "validate:release": "node scripts/validate-release-metadata.mjs",
     "test:electron": "npm run build && cross-env BADGE_BLUR_SMOKE_TEST=1 electron-forge start",
     "test:badge-set": "node scripts/evaluate-badge-set.mjs",
     "test:badge-demo-production": "node scripts/evaluate-badge-set.mjs --input demo-test-images --ground-truth test-data/demo-badge-ground-truth.json --torso-guided --global-classifier --skip-redaction",

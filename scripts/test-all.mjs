@@ -27,6 +27,7 @@ const tests = [
   "scripts/test-edit-revisions.mjs",
   "scripts/test-export-state.mjs",
   "scripts/test-server-lifecycle.mjs",
+  "scripts/test-release-metadata.mjs",
 ];
 
 for (const test of tests) {

@@ -502,12 +502,23 @@ creates a Start Menu application, and registers a normal uninstaller under
 **Settings > Apps > Installed apps**. Both contain Electron, the production
 interface, image runtime, local models, and system icon.
 
-The GitHub Actions workflow independently builds the Mac ARM64 DMG/ZIP and
-Windows x64 setup executable on their matching hosted operating systems.
+The **Continuous integration** GitHub Actions workflow runs for every pull
+request into `main` and every update to `main`. It runs the deterministic test
+suite, builds the production interface, and exercises the source Electron app
+on both macOS Apple Silicon and Windows x64 without downloading the large local
+models or packaging installers.
 
-Installer CI is intentionally not run for ordinary branch pushes. It runs only
-when started manually from the **Build installable apps** workflow or when a
-version tag matching `v*` is pushed.
+The separate **Build installable apps** workflow independently builds the Mac
+ARM64 DMG/ZIP and Windows x64 setup executable on their matching hosted
+operating systems. Installer CI remains intentionally manual or version-tag
+only so ordinary changes do not repeatedly download models and build artifacts
+larger than 500 MB.
+
+For a release, first run **Build installable apps** manually against the exact
+candidate commit. Create and push the immutable `vMAJOR.MINOR.PATCH` tag only
+after that candidate run passes. The tag must match `package.json` and have a
+non-empty matching file under `release-notes/`; a tag run rebuilds both
+installers and publishes them only after every platform gate passes.
 
 Each launch receives a new shutdown token. The Electron main process owns the
 private service, and closing the window or quitting the app shuts down that
