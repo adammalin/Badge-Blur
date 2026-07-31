@@ -336,14 +336,31 @@ function createMainWindow(url) {
       const capabilities = await mainWindow.webContents.executeJavaScript(`(async () => {
         const wait = (milliseconds) =>
           new Promise((resolve) => setTimeout(resolve, milliseconds));
-        const isMediaCenteredInViewport = (viewer, media) => {
-          if (!viewer || !media) return false;
+        const mediaCenterMetrics = (viewer, media) => {
+          if (!viewer || !media) return { centered: false, missing: true };
           const viewerRect = viewer.getBoundingClientRect();
           const mediaRect = media.getBoundingClientRect();
+          const stage = viewer.querySelector(".viewer-content");
+          const stageRect = stage?.getBoundingClientRect();
           const viewportCenter =
             viewerRect.left + viewer.clientLeft + viewer.clientWidth / 2;
           const mediaCenter = mediaRect.left + mediaRect.width / 2;
-          return Math.abs(mediaCenter - viewportCenter) <= 2;
+          return {
+            centered: Math.abs(mediaCenter - viewportCenter) <= 2,
+            offset: Number((mediaCenter - viewportCenter).toFixed(2)),
+            viewerLeft: Number(viewerRect.left.toFixed(2)),
+            viewerWidth: Number(viewerRect.width.toFixed(2)),
+            viewerClientLeft: viewer.clientLeft,
+            viewerClientWidth: viewer.clientWidth,
+            viewerScrollLeft: viewer.scrollLeft,
+            stageLeft: stageRect ? Number(stageRect.left.toFixed(2)) : null,
+            stageWidth: stageRect ? Number(stageRect.width.toFixed(2)) : null,
+            mediaLeft: Number(mediaRect.left.toFixed(2)),
+            mediaWidth: Number(mediaRect.width.toFixed(2)),
+            mediaHidden: media.hidden,
+            mediaStyleLeft: media.style.left,
+            mediaStyleWidth: media.style.width,
+          };
         };
         const result = {
           appVersion:
@@ -431,16 +448,18 @@ function createMainWindow(url) {
           processingReviewState.activeIndex === 0 &&
           processingReviewState.workflowStage === "review";
         await wait(25);
-        const photoCenteredAtBatchStart = isMediaCenteredInViewport(
+        const batchStartCenter = mediaCenterMetrics(
           document.querySelector(".canvas-wrap"),
           document.querySelector(".canvas-wrap canvas"),
         );
+        const photoCenteredAtBatchStart = batchStartCenter.centered;
         document.querySelector(".fit-view")?.click();
         await wait(25);
-        const photoCentered = isMediaCenteredInViewport(
+        const fitCenter = mediaCenterMetrics(
           document.querySelector(".canvas-wrap"),
           document.querySelector(".canvas-wrap canvas"),
         );
+        const photoCentered = fitCenter.centered;
         const bodyStyle = getComputedStyle(document.body);
         const backgroundDoesNotRepeat =
           bodyStyle.backgroundRepeat === "no-repeat" &&
@@ -628,6 +647,8 @@ function createMainWindow(url) {
           processingCompletionStartsReview,
           photoCenteredAtBatchStart,
           photoCentered,
+          batchStartCenter,
+          fitCenter,
           backgroundDoesNotRepeat,
           neutralReadyForReview,
           exportFormatSelectable,
