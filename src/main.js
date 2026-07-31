@@ -109,7 +109,7 @@ import {
   steppedViewZoom,
 } from "./view-transform.js";
 
-const APP_VERSION = "0.22.2";
+const APP_VERSION = "0.22.3";
 const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -195,6 +195,12 @@ const elements = {
   quitDialogCancel: document.querySelector("#quitDialogCancel"),
   quitDialogSafe: document.querySelector("#quitDialogSafe"),
   quitDialogImmediate: document.querySelector("#quitDialogImmediate"),
+  processingCompleteOverlay: document.querySelector(
+    "#processingCompleteOverlay",
+  ),
+  processingCompleteText: document.querySelector("#processingCompleteText"),
+  reviewPhotosButton: document.querySelector("#reviewPhotosButton"),
+  confettiOverlay: document.querySelector("#confettiOverlay"),
 };
 
 let modelWorkers = [];
@@ -221,6 +227,7 @@ let lastBatchWorkerCount = null;
 let exportStartedAt = null;
 let exportTimer = null;
 let lastExportDurationMs = null;
+let confettiTimer = null;
 let computeBenchmarkScore = null;
 let exportQueue = Promise.resolve();
 const itemExportTimers = new Map();
@@ -298,6 +305,9 @@ elements.pauseResumeButton.addEventListener("click", () => {
 elements.exportAllButton.addEventListener("click", exportAll);
 elements.exportChangedButton.addEventListener("click", exportChanged);
 elements.openExportFolderButton.addEventListener("click", openExportFolder);
+elements.reviewPhotosButton.addEventListener("click", () => {
+  void beginPhotoReview();
+});
 elements.attentionQueueButton.addEventListener("click", () => {
   void goToNextAttentionItem();
 });
@@ -423,6 +433,9 @@ if (new URLSearchParams(window.location.search).get("smoke") === "1") {
     state: reviewSmokeState,
     simulateOtherImageProcessing,
     addManualMaskAndShowAfter,
+    showProcessingComplete: () =>
+      showProcessingComplete("2 photos processed · 2 await review."),
+    playConfetti: playExportConfetti,
   });
 }
 initializeTheme();
@@ -618,6 +631,10 @@ function reviewSmokeState() {
     reviewControl:
       document.querySelector(".current-image-review-state")?.textContent || null,
     workflowStage: document.body.dataset.workflowStage,
+    reviewButtonText:
+      document.querySelector(".review-image")?.textContent?.trim() || null,
+    reviewButtonAction:
+      document.querySelector(".review-image")?.dataset.action || null,
   };
 }
 
@@ -773,6 +790,7 @@ function scheduleViewerLayoutRefresh() {
 
 function setWorkflowStage(stage, { focus = true } = {}) {
   const review = stage === "review";
+  if (!review) hideProcessingComplete();
   document.body.dataset.workflowStage = review ? "review" : "setup";
   elements.setupPanel.hidden = review;
   elements.reviewSection.hidden = !review;
@@ -1872,6 +1890,7 @@ async function ensureModelWorkers(requestedCount) {
 
 async function startBatch() {
   if (batchPromise || running) return batchPromise;
+  hideProcessingComplete();
   setWorkflowStage("review", { focus: false });
   batchPromise = runAll()
     .catch((error) => {
@@ -1908,11 +1927,10 @@ async function runAll() {
   if (pendingIndices.length === 0) {
     batchPaused = false;
     runState = "completed";
-    activeIndex = firstAttentionIndex();
     showProgress("Every image in this run is already saved.", 100);
-    showCompletion(
-      "Batch already complete",
-      "Every image is saved. Review begins with the first image.",
+    showProcessingComplete(
+      `${items.length} photo${items.length === 1 ? "" : "s"} ready · ` +
+        `${unreviewedDetectedItems().length} await review.`,
     );
     await renderCarousel();
     updateButtons();
@@ -1925,6 +1943,7 @@ async function runAll() {
   batchPaused = false;
   runState = "running";
   hideCompletion();
+  hideProcessingComplete();
   lastBatchWorkerCount = null;
   batchStartedAt = performance.now();
   startBatchTimer();
@@ -2047,9 +2066,7 @@ async function runAll() {
   batchOperation = null;
   pauseRequested = false;
   batchPaused = false;
-  activeIndex = firstAttentionIndex();
-  showCompletion(
-    "Batch processing complete",
+  showProcessingComplete(
     `${finishedItemCount()} of ${items.length} images finished · ` +
       `${attentionQueueItems().length} flagged issue${attentionQueueItems().length === 1 ? "" : "s"} · ` +
       `${unreviewedDetectedItems().length} await review confirmation.`,
@@ -3190,7 +3207,11 @@ function renderItem(item, slot, isActive) {
     card.querySelector(".zoom-level").addEventListener("click", () => {
       setViewScaleMode(item, "fit");
     });
-    card.querySelector(".review-image").addEventListener("click", () => {
+    card.querySelector(".review-image").addEventListener("click", (event) => {
+      if (event.currentTarget.dataset.action === "export") {
+        void exportAll();
+        return;
+      }
       void toggleActiveItemReviewed();
     });
     card.querySelector(".canvas-wrap").addEventListener("scroll", () => {
@@ -3305,12 +3326,19 @@ function updateCurrentImageReviewState(card, item, overrideMessage = null) {
   const state = card.querySelector(".current-image-review-state");
   const button = card.querySelector(".review-image");
   if (!state || !button) return;
+  const readyToExport =
+    item.reviewConfirmed && allReviewableImagesReviewed();
   button.disabled =
     item.status !== "detected" ||
     item.processing ||
     item.status === "running" ||
     item.reviewActionInFlight;
-  button.textContent = item.reviewConfirmed
+  button.dataset.action = readyToExport ? "export" : "review";
+  button.classList.toggle("secondary", !readyToExport);
+  button.classList.toggle("review-export-ready", readyToExport);
+  button.textContent = readyToExport
+    ? "Export all →"
+    : item.reviewConfirmed
     ? "Reviewed ✓"
     : nextReviewIndex(items.indexOf(item)) !== items.indexOf(item)
       ? "Save, review & next →"
@@ -3318,6 +3346,8 @@ function updateCurrentImageReviewState(card, item, overrideMessage = null) {
   button.setAttribute("aria-pressed", String(item.reviewConfirmed));
   if (overrideMessage) {
     state.textContent = overrideMessage;
+  } else if (readyToExport) {
+    state.textContent = "All images reviewed · ready for final export";
   } else if (item.reviewConfirmed) {
     state.textContent = item.reviewActionInFlight
       ? "Centered image · saving review…"
@@ -3827,17 +3857,33 @@ function drawBox(context, box, selected, index = 0, total = 1) {
   const badgeNumber = Math.min(index + 1, total);
   const label = selected
     ? `Badge ${badgeNumber} selected · ${score}${fitLabel}`
-    : `Badge ${badgeNumber} · ${box.label} · ${score}${fitLabel}`;
+    : `Badge ${badgeNumber} · ${score}${fitLabel}`;
   context.font =
     `600 ${Math.max(16, 19 * scale)}px Mulish, Aptos, Arial, sans-serif`;
-  const textWidth = context.measureText(label).width;
+  const labelPadding = 8 * scale;
+  const maximumLabelWidth = Math.max(
+    120 * scale,
+    Math.min(context.canvas.width - labelPadding * 2, 390 * scale),
+  );
+  const visibleLabel = fitCanvasLabel(context, label, maximumLabelWidth);
+  const textWidth = context.measureText(visibleLabel).width;
   const labelHeight = Math.max(26, 31 * scale);
   const labelY = Math.max(0, box.y - labelHeight);
+  const labelWidth = Math.min(
+    context.canvas.width,
+    textWidth + labelPadding * 2,
+  );
+  const labelX = clamp(box.x, 0, context.canvas.width - labelWidth);
   context.fillStyle = color;
-  context.fillRect(box.x, labelY, textWidth + 18 * scale, labelHeight);
+  context.fillRect(labelX, labelY, labelWidth, labelHeight);
   context.fillStyle = "#ffffff";
   context.textBaseline = "middle";
-  context.fillText(label, box.x + 8 * scale, labelY + labelHeight / 2);
+  context.fillText(
+    visibleLabel,
+    labelX + labelPadding,
+    labelY + labelHeight / 2,
+    maximumLabelWidth,
+  );
   if (selected) {
     const handleRadius = Math.max(7, 9 * scale);
     for (const point of maskPoints(box)) {
@@ -3851,6 +3897,18 @@ function drawBox(context, box, selected, index = 0, total = 1) {
     }
   }
   context.restore();
+}
+
+function fitCanvasLabel(context, label, maximumWidth) {
+  if (context.measureText(label).width <= maximumWidth) return label;
+  const suffix = "…";
+  let end = label.length;
+  while (end > 1) {
+    const candidate = `${label.slice(0, end).trimEnd()}${suffix}`;
+    if (context.measureText(candidate).width <= maximumWidth) return candidate;
+    end -= 1;
+  }
+  return suffix;
 }
 
 function drawDeleteControl(context, box) {
@@ -4078,10 +4136,16 @@ function updateExportDestination() {
 async function openExportFolder() {
   if (!activeRun || !window.badgeBlurDesktop?.openExportFolder) return;
   try {
-    const checkpointHandle = await activeRun.directory.getFileHandle(
-      "badge-blur-checkpoint.json",
-    );
-    const checkpointFile = await checkpointHandle.getFile();
+    let checkpointFile = null;
+    try {
+      const checkpointHandle = await activeRun.directory.getFileHandle(
+        "badge-blur-checkpoint.json",
+      );
+      checkpointFile = await checkpointHandle.getFile();
+    } catch {
+      // Finder can still resolve the exact run by its unique run ID if the
+      // browser-backed file object does not expose a native path.
+    }
     const sourceItem = items.find(
       (item) => item.file && !item.file.desktopSourceToken,
     );
@@ -4090,6 +4154,10 @@ async function openExportFolder() {
       sourceFile: sourceItem?.file || null,
       sourceRelativePath: sourceItem ? sourceRelativePath(sourceItem) : "",
       runFolderName: activeRun.runFolderName,
+      runId: activeRun.runId,
+      sourceRootName:
+        sourceDirectoryHandle?.name || sourceRootName(sourceItem?.file) || "",
+      customExportRootName: customExportDirectoryHandle?.name || "",
     });
   } catch (error) {
     console.error("Could not open the export folder.", error);
@@ -4362,6 +4430,7 @@ async function exportAll() {
     {
       progressVerb: "Re-exporting",
       completionTitle: "Export complete",
+      celebrate: true,
     },
   );
 }
@@ -4386,7 +4455,11 @@ async function exportChanged() {
 
 async function reexportItems(
   targets,
-  { progressVerb = "Re-exporting", completionTitle = "Export complete" } = {},
+  {
+    progressVerb = "Re-exporting",
+    completionTitle = "Export complete",
+    celebrate = false,
+  } = {},
 ) {
   if (!activeRun || targets.length === 0) return;
   running = true;
@@ -4424,6 +4497,57 @@ async function reexportItems(
     `Export finished in ${formatDuration(lastExportDurationMs)} · ${activeRun.runFolderName}`,
     100,
   );
+  if (celebrate) playExportConfetti();
+}
+
+function allReviewableImagesReviewed() {
+  const detected = items.filter((item) => item.status === "detected");
+  return (
+    detected.length > 0 &&
+    detected.every(
+      (item) => item.reviewConfirmed && !item.reviewActionInFlight,
+    ) &&
+    !items.some(
+      (item) =>
+        item.processing || item.status === "pending" || item.status === "running",
+    ) &&
+    !running
+  );
+}
+
+function playExportConfetti() {
+  const overlay = elements.confettiOverlay;
+  if (!overlay) return;
+  clearTimeout(confettiTimer);
+  overlay.replaceChildren();
+  overlay.hidden = false;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    overlay.hidden = true;
+    return;
+  }
+
+  const colors = ["#70b94b", "#007833", "#f28c28", "#f4c542", "#ffffff"];
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < 72; index += 1) {
+    const particle = document.createElement("i");
+    const seed = (index * 47) % 101;
+    particle.style.setProperty("--confetti-x", `${(index * 37) % 100}%`);
+    particle.style.setProperty("--confetti-drift", `${seed - 50}vw`);
+    particle.style.setProperty("--confetti-delay", `${(index % 12) * 24}ms`);
+    particle.style.setProperty(
+      "--confetti-duration",
+      `${1900 + (index % 9) * 105}ms`,
+    );
+    particle.style.setProperty("--confetti-turn", `${360 + seed * 9}deg`);
+    particle.style.backgroundColor = colors[index % colors.length];
+    particle.className = index % 4 === 0 ? "is-round" : "";
+    fragment.append(particle);
+  }
+  overlay.append(fragment);
+  confettiTimer = setTimeout(() => {
+    overlay.hidden = true;
+    overlay.replaceChildren();
+  }, 3300);
 }
 
 async function writeRunMetadata(checkpointState = runState) {
@@ -5110,7 +5234,16 @@ function updateButtons() {
     : "Resume batch";
   elements.exportAllButton.disabled =
     !serverReady || !hasDetectedItems || batchLocked;
-  elements.exportAllButton.textContent = activeRun ? "Re-export all" : "Export all";
+  const reviewComplete = allReviewableImagesReviewed();
+  elements.exportAllButton.classList.toggle(
+    "is-ready-to-export",
+    reviewComplete,
+  );
+  elements.exportAllButton.textContent = reviewComplete
+    ? "Export all →"
+    : activeRun
+      ? "Re-export all"
+      : "Export all";
   if (unreviewedDetectedItems().length > 0 && !running) {
     elements.exportAllButton.textContent =
       `Review ${unreviewedDetectedItems().length} before final export`;
@@ -5268,6 +5401,60 @@ function showProgress(text, percent) {
   elements.progressWrap.hidden = false;
   elements.progressText.textContent = text;
   elements.progressBar.style.width = `${clamp(percent, 0, 100)}%`;
+}
+
+function processingCompleteModalRoots() {
+  return [
+    document.querySelector(".masthead"),
+    document.querySelector("main"),
+    document.querySelector(".batch-dock"),
+    document.querySelector("footer"),
+  ].filter(Boolean);
+}
+
+function showProcessingComplete(text) {
+  if (!elements.processingCompleteOverlay) return;
+  hideCompletion();
+  elements.processingCompleteText.textContent = text;
+  elements.processingCompleteOverlay.hidden = true;
+  void elements.processingCompleteOverlay.offsetWidth;
+  elements.processingCompleteOverlay.hidden = false;
+  document.body.classList.add("processing-complete-active");
+  for (const root of processingCompleteModalRoots()) root.inert = true;
+  requestAnimationFrame(() => elements.reviewPhotosButton?.focus());
+}
+
+function hideProcessingComplete() {
+  if (!elements.processingCompleteOverlay) return;
+  elements.processingCompleteOverlay.hidden = true;
+  document.body.classList.remove("processing-complete-active");
+  for (const root of processingCompleteModalRoots()) root.inert = false;
+}
+
+async function beginPhotoReview() {
+  hideProcessingComplete();
+  setWorkflowStage("review", { focus: false });
+  activeIndex = 0;
+  await renderCarousel();
+  updateButtons();
+  updateSummary();
+  scheduleProjectCache();
+  showProgress(
+    `Reviewing image 1 of ${items.length} · approve each image to continue.`,
+    100,
+  );
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+  const firstCard = document.querySelector(".image-card.is-active");
+  firstCard?.scrollIntoView({
+    behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+    block: "start",
+  });
+  firstCard?.setAttribute("tabindex", "-1");
+  firstCard?.focus({ preventScroll: true });
 }
 
 function hideCompletion() {

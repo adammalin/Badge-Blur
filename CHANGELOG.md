@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.22.3 — 2026-07-31
+
+- Open an existing export run directly in the native file browser even when
+  its checkpoint write is still queued, while retaining verified source-root
+  and run-folder path boundaries.
+- On macOS, recover a browser-backed export's exact native path from its unique
+  run-folder name, then verify the saved run ID before opening Finder. Do not
+  fall through to an unrelated Desktop folder chooser.
+- Start the one-time native folder fallback in the imported source's `exports`
+  directory instead of the Desktop, and accept the explicitly selected run
+  folder without requiring a checkpoint file.
+- Keep the browser build's displayed source version aligned with 0.22.3.
+- Deny every Electron renderer request outside loopback at the session layer,
+  in addition to the existing same-origin content policy and offline-only model
+  configuration, with deterministic and desktop-smoke regressions.
+- Turn the final review action and batch export control into a distinct green
+  **Export all** call to action, then play a brief silent confetti overlay only
+  after the complete export finishes successfully.
+- End batch processing with a silent animated green check and translucent
+  success gradient. Pause on **Review photos**, then start the approval pass at
+  image 1 before the existing final export and confetti step.
+- Keep canvas mask labels compact, ellipsized, and clamped inside the visible
+  photo so long detector names and corner-fit status cannot be cropped.
+- Add an analysis-only local-contrast corner pass, jointly reconcile opposite
+  edge slopes, prefer plausible outer boundaries over strong internal badge
+  graphics, and preserve accurate geometry for rotated horizontal cards. The
+  original and exported image contrast remains unchanged.
+
 ## 0.22.2 — 2026-07-31
 
 - Retain close-up people that fill as much as 98% of the frame so their badges

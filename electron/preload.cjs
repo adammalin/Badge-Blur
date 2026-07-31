@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("badgeBlurDesktop", {
     sourceFile,
     sourceRelativePath,
     runFolderName,
+    runId,
+    sourceRootName,
+    customExportRootName,
   }) => {
     let checkpointPath = "";
     let sourcePath = "";
@@ -32,6 +35,9 @@ contextBridge.exposeInMainWorld("badgeBlurDesktop", {
       sourcePath,
       sourceRelativePath,
       runFolderName,
+      runId,
+      sourceRootName,
+      customExportRootName,
     });
   },
 });

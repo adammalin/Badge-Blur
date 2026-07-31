@@ -19,6 +19,8 @@ const tests = [
   "scripts/test-run-import.mjs",
   "scripts/test-manifest-source-recovery.cjs",
   "scripts/test-export-folder.cjs",
+  "scripts/audit-local-only.mjs",
+  "scripts/test-network-policy.cjs",
   "scripts/test-checkpoint.mjs",
   "scripts/test-thumbnail-preview.mjs",
   "scripts/test-mask-controls.mjs",

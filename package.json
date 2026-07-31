@@ -1,7 +1,7 @@
 {
   "name": "badge-blur",
   "productName": "Badge Blur",
-  "version": "0.22.2",
+  "version": "0.22.3",
   "private": true,
   "description": "Local-only desktop app for detecting and redacting identification badges.",
   "author": "UT-Battelle LLC",
@@ -33,6 +33,7 @@
     "test:run-import": "node scripts/test-run-import.mjs",
     "test:manifest-source": "node scripts/test-manifest-source-recovery.cjs",
     "test:export-folder": "node scripts/test-export-folder.cjs",
+    "test:security": "node scripts/audit-local-only.mjs && node scripts/test-network-policy.cjs",
     "test:checkpoint": "node scripts/test-checkpoint.mjs",
     "test:thumbnail": "node scripts/test-thumbnail-preview.mjs",
     "test:mask-controls": "node scripts/test-mask-controls.mjs",

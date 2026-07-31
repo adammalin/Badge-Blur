@@ -1,19 +1,24 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const {
   app,
   BrowserWindow,
   dialog,
   ipcMain,
+  session,
   shell,
   utilityProcess,
 } = require("electron");
 const {
-  CHECKPOINT_NAME,
   RUN_FOLDER_PATTERN,
+  resolveDiscoveredExportFolder,
   resolveVerifiedExportFolder,
 } = require("./export-folder.cjs");
 const { recoverManifestSource } = require("./manifest-source.cjs");
+const {
+  installLocalOnlyNetworkPolicy,
+} = require("./network-policy.cjs");
 
 if (require("electron-squirrel-startup")) {
   app.quit();
@@ -55,36 +60,53 @@ app.setAppUserModelId(APP_ID);
 ipcMain.handle("badge-blur:open-export-folder", async (_event, request) => {
   const runFolderName = String(request?.runFolderName || "");
   let folder = resolveVerifiedExportFolder(request);
-  if (!folder) {
-    if (!RUN_FOLDER_PATTERN.test(runFolderName)) {
-      throw new Error("Badge Blur could not verify the export folder.");
-    }
-    const selection = await dialog.showOpenDialog(mainWindow, {
-      title: `Locate ${runFolderName}`,
-      buttonLabel: "Open export folder",
-      defaultPath: app.getPath("desktop"),
-      properties: ["openDirectory"],
-      message:
-        "Badge Blur could not recover the native folder path. Choose the exact run folder once.",
-    });
-    if (selection.canceled || selection.filePaths.length !== 1) return false;
-    const selectedFolder = selection.filePaths[0];
-    if (path.basename(selectedFolder) !== runFolderName) {
-      throw new Error(`Choose the export folder named ${runFolderName}.`);
-    }
-    folder = resolveVerifiedExportFolder({
-      checkpointPath: path.join(selectedFolder, CHECKPOINT_NAME),
-    });
+  if (!folder && process.platform === "darwin") {
+    folder = resolveMacExportFolder(request);
   }
   if (!folder) {
     throw new Error(
-      "The selected folder does not contain this run's checkpoint file.",
+      `Finder could not locate ${runFolderName}. The exported files remain saved in the source folder's exports directory.`,
     );
   }
   const error = await shell.openPath(folder);
   if (error) throw new Error(error);
   return true;
 });
+
+function resolveMacExportFolder(request) {
+  if (!RUN_FOLDER_PATTERN.test(String(request?.runFolderName || ""))) {
+    return null;
+  }
+  const names = [
+    request.runFolderName,
+    request.sourceRootName,
+    request.customExportRootName,
+  ].filter((name, index, values) =>
+    typeof name === "string" &&
+    name.length > 0 &&
+    name.length <= 255 &&
+    values.indexOf(name) === index,
+  );
+  const searchResults = [];
+  for (const name of names) {
+    try {
+      const escapedName = name.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+      const output = execFileSync(
+        "/usr/bin/mdfind",
+        [`kMDItemFSName == "${escapedName}"c`],
+        { encoding: "utf8", timeout: 3_000, maxBuffer: 1024 * 1024 },
+      );
+      searchResults.push(...output.split(/\r?\n/).filter(Boolean));
+    } catch {
+      // A missing or temporarily unavailable Spotlight result is handled by
+      // the normal verified-path failure below; never open an unverified path.
+    }
+  }
+  return resolveDiscoveredExportFolder({
+    ...request,
+    searchResults,
+  });
+}
 
 ipcMain.handle(
   "badge-blur:recover-manifest-source",
@@ -144,6 +166,7 @@ if (!hasSingleInstanceLock) {
 
 app.whenReady().then(async () => {
   try {
+    installLocalOnlyNetworkPolicy(session.defaultSession);
     serverUrl = await startLocalServer();
     createMainWindow(serverUrl);
   } catch (error) {
@@ -333,6 +356,10 @@ function createMainWindow(url) {
             document.documentElement.scrollHeight <= window.innerHeight + 1
         };
 
+        result.externalRequestBlocked = await fetch(
+          "https://example.com/badge-blur-network-policy-test",
+        ).then(() => false, () => true);
+
         const smoke = window.__badgeBlurReviewSmoke;
         if (!smoke) return { ...result, reviewSmokeAvailable: false };
         await smoke.loadFixture();
@@ -342,6 +369,32 @@ function createMainWindow(url) {
         const sourceCacheActive =
           cacheStatus.sourceCacheItems >= 2 &&
           cacheStatus.sourceCacheBytes > 0;
+        document
+          .querySelector('[data-filmstrip-id^="image-1-"]')
+          ?.click();
+        await wait(50);
+        smoke.showProcessingComplete();
+        await wait(25);
+        const processingOverlay = document.querySelector(
+          "#processingCompleteOverlay"
+        );
+        const processingOverlayStyle = processingOverlay
+          ? getComputedStyle(processingOverlay)
+          : null;
+        const processingCompletionVisible =
+          processingOverlay?.hidden === false &&
+          processingOverlayStyle?.position === "fixed" &&
+          processingOverlayStyle?.backgroundImage.includes("gradient") &&
+          document.querySelector("#reviewPhotosButton")?.textContent.trim() ===
+            "Review photos →" &&
+          Boolean(document.querySelector(".processing-complete-check svg"));
+        document.querySelector("#reviewPhotosButton")?.click();
+        await wait(100);
+        const processingReviewState = smoke.state();
+        const processingCompletionStartsReview =
+          processingOverlay?.hidden === true &&
+          processingReviewState.activeIndex === 0 &&
+          processingReviewState.workflowStage === "review";
         await wait(25);
         const batchStartViewerRect = document
           .querySelector(".canvas-wrap")
@@ -527,11 +580,33 @@ function createMainWindow(url) {
           manualMaskAfterState.redactedPreviewRevision ===
             manualMaskAfterState.editRevision &&
           manualMaskAfterState.redactedPreviewBytes > 0;
+        document.querySelector(".review-image")?.click();
+        let finalReviewOffersExport = false;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const finalReviewState = smoke.state();
+          if (
+            finalReviewState.reviewButtonAction === "export" &&
+            finalReviewState.reviewButtonText === "Export all →"
+          ) {
+            finalReviewOffersExport = true;
+            break;
+          }
+          await wait(25);
+        }
+        smoke.playConfetti();
+        await wait(25);
+        const confettiOverlay = document.querySelector("#confettiOverlay");
+        const silentConfettiReady =
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+          (confettiOverlay?.hidden === false &&
+            confettiOverlay?.childElementCount === 72);
 
         return {
           ...result,
           reviewSmokeAvailable: true,
           sourceCacheActive,
+          processingCompletionVisible,
+          processingCompletionStartsReview,
           photoCenteredAtBatchStart,
           photoCentered,
           backgroundDoesNotRepeat,
@@ -553,6 +628,8 @@ function createMainWindow(url) {
           manualJpegExport,
           reviewSaveAndAdvance,
           manualMaskAfterRegenerated,
+          finalReviewOffersExport,
+          silentConfettiReady,
           inactiveDeleteProtected:
             inactiveDeleteState.boxCounts[0] === 2 &&
             inactiveDeleteState.boxCounts[1] === 1,
@@ -597,11 +674,14 @@ function createMainWindow(url) {
         capabilities.openExportFolderBridge &&
         capabilities.manifestRecoveryBridge &&
         capabilities.localOnly &&
+        capabilities.externalRequestBlocked &&
         capabilities.userAgentIncludesElectron &&
         capabilities.setupStageOnly &&
         capabilities.viewportFitted &&
         capabilities.reviewSmokeAvailable &&
         capabilities.sourceCacheActive &&
+        capabilities.processingCompletionVisible &&
+        capabilities.processingCompletionStartsReview &&
         capabilities.photoCenteredAtBatchStart &&
         capabilities.photoCentered &&
         capabilities.backgroundDoesNotRepeat &&
@@ -621,6 +701,8 @@ function createMainWindow(url) {
         capabilities.manualJpegExport &&
         capabilities.reviewSaveAndAdvance &&
         capabilities.manualMaskAfterRegenerated &&
+        capabilities.finalReviewOffersExport &&
+        capabilities.silentConfettiReady &&
         capabilities.inactiveDeleteProtected &&
         capabilities.activeDeleteScoped &&
         capabilities.reviewProgress &&

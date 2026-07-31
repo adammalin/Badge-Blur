@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-31
-Source candidate: `0.22.2`; locally qualified packaged Mac candidate: `0.22.1`;
+Source candidate: `0.22.3`; locally qualified packaged Mac candidate: `0.22.1`;
 Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -34,6 +34,12 @@ threshold: 0.20
 
 Automatic precision on this small synthetic set: **11/11 (100%)**.  
 Automatic recall on this small synthetic set: **11/11 (100%)**.
+
+The 2026-07-31 low-contrast and rotated-card corner-fit regression also fitted
+all **11/11** masks, with no rectangle fallbacks. This includes the faint,
+glare-obscured horizontal badge in `04-outdoor-glare-motion-badge.png` and the
+outer plastic-holder boundary in `01-single-frontal-badge.png`; the latter no
+longer follows the stronger diagonal graphic printed inside the card.
 
 This is a frozen demonstration result, not a production accuracy claim.
 
@@ -71,6 +77,13 @@ report fitted 32 of 38 masks under
 0.21.0 report is under `test-output/evaluation-20260724-173554-2d89e5a6/`.
 The v0.9 Grounding DINO report is under
 `test-output/evaluation-20260723-150039-0867c220/`.
+
+The analysis-only contrast and opposite-edge geometry pass was rechecked on
+2026-07-31 under `test-output/evaluation-20260731-145106-66750448/`. It retained
+the same 34/45 covered points, 34 matching masks, four false masks, 75.6%
+recall, and 89.5% precision, while safely corner-fitting 35 of 38 masks. The
+original pixels and exported contrast remain unchanged; the enhanced raster is
+discarded after its candidate corner coordinates are scored.
 
 This test rejects unattended use: 11 reviewed badge points were still missed.
 Unconstrained torso crops, tiled Grounding DINO, and the earlier color assist
@@ -503,6 +516,30 @@ c2efd15fe98c1e4936898fd3a5910e75c48256ecdc953ef23e2646da2f5b0705  Badge-Blur-Mac
 The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
+
+### Version 0.22.3 source-release qualification
+
+The local source candidate tested on 2026-07-31 passed:
+
+- all 25 deterministic tests, including export-folder run-ID verification,
+  local-only network enforcement, physical-edge redaction, per-mask strength,
+  and low-contrast/rotated corner fitting;
+- the five-image production-path evaluation at 11/11 covered badge points,
+  11 true-positive masks, zero false masks, and 11/11 safe corner fits;
+- the frozen 18-photo production regression at the unchanged qualified result
+  of 34/45 covered points, 34 true-positive masks, four false masks, 75.6%
+  recall, and 89.5% precision, with 35 of 38 masks safely corner-fitted; and
+- the production Vite build and complete Electron review smoke, including the
+  processing-complete animation, first-image review handoff, final export
+  state, silent confetti, loopback-only service startup, and clean shutdown;
+  the exact Finder resolver was separately exercised against the most recent
+  real exported run and rejected a mismatched run ID.
+
+The corresponding current reports are
+`test-output/evaluation-20260731-145039-5027b292/` for the fictional demo set
+and `test-output/evaluation-20260731-145106-66750448/` for the reviewed local
+photo set. This qualification covers the 0.22.3 main-branch source release.
+Packaged macOS and Windows installers remain at 0.22.1 and were not rebuilt.
 
 ### Version 0.22.2 source-release qualification
 

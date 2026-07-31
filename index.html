@@ -8,7 +8,7 @@
       content="default-src 'self'; img-src 'self' blob: data:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; worker-src 'self' blob:;"
     />
     <meta name="referrer" content="no-referrer" />
-    <meta name="badge-blur-version" content="0.22.1" />
+    <meta name="badge-blur-version" content="0.22.3" />
     <title>Badge Blur</title>
     <link rel="icon" type="image/png" href="/badge-blur.png" />
     <link rel="apple-touch-icon" href="/badge-blur.png" />
@@ -497,6 +497,40 @@
         </button>
       </div>
     </dialog>
+
+    <div
+      id="processingCompleteOverlay"
+      class="processing-complete-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="processingCompleteTitle"
+      aria-describedby="processingCompleteText"
+      hidden
+    >
+      <div class="processing-complete-card">
+        <div class="processing-complete-check" aria-hidden="true">
+          <svg viewBox="0 0 72 72" focusable="false">
+            <circle cx="36" cy="36" r="31"></circle>
+            <path d="M21 37.5 31.5 48 52 26"></path>
+          </svg>
+        </div>
+        <p class="processing-complete-kicker">Processing complete</p>
+        <h2 id="processingCompleteTitle">Your photos are ready to review</h2>
+        <p id="processingCompleteText">
+          Start with the first image and approve each badge mask.
+        </p>
+        <button id="reviewPhotosButton" class="button" type="button">
+          Review photos →
+        </button>
+      </div>
+    </div>
+
+    <div
+      id="confettiOverlay"
+      class="confetti-overlay"
+      aria-hidden="true"
+      hidden
+    ></div>
 
     <footer>
       <p>

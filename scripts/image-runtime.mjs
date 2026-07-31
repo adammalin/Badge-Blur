@@ -219,7 +219,8 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
   const paddingPercent = clamp(Number(options.paddingPercent) || 0, 0, 40);
   const fitScale = Math.min(1, 3600 / Math.max(info.width, info.height));
   const source = await pixelSource(sourceBuffer, info);
-  const prepared = await source
+  const resizedSource = source
+    .clone()
     .resize({
       width: Math.max(1, Math.round(info.width * fitScale)),
       height: Math.max(1, Math.round(info.height * fitScale)),
@@ -227,7 +228,20 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
     })
     // Preserve RGB during fitting. Badge edges can be strongly chromatic while
     // having nearly identical luminance, which a grayscale-only pass misses.
-    .removeAlpha()
+    .removeAlpha();
+  const prepared = await resizedSource
+    .raw({ depth: "uchar" })
+    .toBuffer({ resolveWithObject: true });
+  const contrastPrepared = await sharp(prepared.data, {
+    raw: {
+      width: prepared.info.width,
+      height: prepared.info.height,
+      channels: prepared.info.channels,
+    },
+  })
+    // CLAHE is applied only to this temporary analysis raster. The source
+    // pixels and exported image remain untouched.
+    .clahe({ width: 48, height: 48, maxSlope: 3 })
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -239,19 +253,30 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
       width: original.width * fitScale,
       height: original.height * fitScale,
     };
-    const fitted = fitQuadrilateral(
+    const regularFit = fitQuadrilateral(
       prepared.data,
       prepared.info.width,
       prepared.info.height,
       prepared.info.channels,
       scaledBox,
     );
+    const contrastFit = fitQuadrilateral(
+      contrastPrepared.data,
+      contrastPrepared.info.width,
+      contrastPrepared.info.height,
+      contrastPrepared.info.channels,
+      scaledBox,
+    );
+    const fitted = chooseCornerFit(regularFit, contrastFit);
     if (!fitted.refined) {
       return {
         points: rectanglePoints(original),
         refined: false,
         confidence: fitted.confidence,
         reason: fitted.reason,
+        ...(options.debug
+          ? { debug: { regularFit, contrastFit, selected: fitted.analysisPass } }
+          : {}),
       };
     }
 
@@ -279,11 +304,34 @@ export async function fitMaskCorners(sourceBuffer, sourceName, options) {
       points: safePoints,
       refined: true,
       confidence: fitted.confidence,
-      reason: "Four continuous badge edges passed the geometry and coverage checks.",
+      reason:
+        fitted.analysisPass === "contrast"
+          ? "Low-contrast badge edges passed the enhanced analysis and coverage checks."
+          : "Four continuous badge edges passed the geometry and coverage checks.",
+      ...(options.debug
+        ? { debug: { regularFit, contrastFit, selected: fitted.analysisPass } }
+        : {}),
     };
   });
 
   return { masks };
+}
+
+function chooseCornerFit(regularFit, contrastFit) {
+  if (!regularFit.refined && contrastFit.refined) {
+    return { ...contrastFit, analysisPass: "contrast" };
+  }
+  if (regularFit.refined && !contrastFit.refined) {
+    return { ...regularFit, analysisPass: "regular" };
+  }
+  if (regularFit.refined && contrastFit.refined) {
+    return contrastFit.confidence > regularFit.confidence + 0.015
+      ? { ...contrastFit, analysisPass: "contrast" }
+      : { ...regularFit, analysisPass: "regular" };
+  }
+  return contrastFit.confidence > regularFit.confidence
+    ? { ...contrastFit, analysisPass: "contrast" }
+    : { ...regularFit, analysisPass: "regular" };
 }
 
 export async function detectColorBadgeCandidates(
@@ -568,7 +616,7 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     start: box.x + box.width * 0.08,
     end: box.x + box.width * 0.92,
   };
-  const left = strongestLine(data, imageWidth, imageHeight, channels, {
+  const leftOptions = {
     orientation: "vertical",
     sampleStart: verticalRange.start,
     sampleEnd: verticalRange.end,
@@ -577,8 +625,8 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     center: box.y + box.height / 2,
     span: box.width,
     expectedPosition: box.x,
-  });
-  const right = strongestLine(data, imageWidth, imageHeight, channels, {
+  };
+  const rightOptions = {
     orientation: "vertical",
     sampleStart: verticalRange.start,
     sampleEnd: verticalRange.end,
@@ -587,8 +635,8 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     center: box.y + box.height / 2,
     span: box.width,
     expectedPosition: box.x + box.width,
-  });
-  const top = strongestLine(data, imageWidth, imageHeight, channels, {
+  };
+  const topOptions = {
     orientation: "horizontal",
     sampleStart: horizontalRange.start,
     sampleEnd: horizontalRange.end,
@@ -597,8 +645,8 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     center: box.x + box.width / 2,
     span: box.height,
     expectedPosition: box.y,
-  });
-  const bottom = strongestLine(data, imageWidth, imageHeight, channels, {
+  };
+  const bottomOptions = {
     orientation: "horizontal",
     sampleStart: horizontalRange.start,
     sampleEnd: horizontalRange.end,
@@ -607,16 +655,183 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     center: box.x + box.width / 2,
     span: box.height,
     expectedPosition: box.y + box.height,
-  });
+  };
+  let left = strongestLine(
+    data,
+    imageWidth,
+    imageHeight,
+    channels,
+    leftOptions,
+  );
+  let right = strongestLine(
+    data,
+    imageWidth,
+    imageHeight,
+    channels,
+    rightOptions,
+  );
+  let top = strongestLine(
+    data,
+    imageWidth,
+    imageHeight,
+    channels,
+    topOptions,
+  );
+  let bottom = strongestLine(
+    data,
+    imageWidth,
+    imageHeight,
+    channels,
+    bottomOptions,
+  );
+
+  // A rotated rectangle has x-vs-y slopes on its side edges that are roughly
+  // the negative of the y-vs-x slopes on its top/bottom edges. If independent
+  // searches disagree badly, keep the stronger pair and re-search the weaker
+  // pair around the compatible rotation. This prevents shirt folds, lanyards,
+  // and strong internal card graphics from defining an impossible quadrilateral.
+  const verticalSlope = (left.slope + right.slope) / 2;
+  const horizontalSlope = (top.slope + bottom.slope) / 2;
+  const rotationMismatch = Math.abs(verticalSlope + horizontalSlope);
+  if (rotationMismatch > 0.42) {
+    const verticalStrength = (left.score + right.score) / 2;
+    const horizontalStrength = (top.score + bottom.score) / 2;
+    if (horizontalStrength >= verticalStrength) {
+      left = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...leftOptions,
+        slopeCenter: -horizontalSlope,
+        slopeTolerance: 0.3,
+      });
+      right = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...rightOptions,
+        slopeCenter: -horizontalSlope,
+        slopeTolerance: 0.3,
+      });
+    } else {
+      top = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...topOptions,
+        slopeCenter: -verticalSlope,
+        slopeTolerance: 0.3,
+      });
+      bottom = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...bottomOptions,
+        slopeCenter: -verticalSlope,
+        slopeTolerance: 0.3,
+      });
+    }
+  }
+
+  const leftDistance =
+    Math.abs(left.position - leftOptions.expectedPosition) / box.width;
+  const rightDistance =
+    Math.abs(right.position - rightOptions.expectedPosition) / box.width;
+  if (Math.abs(left.slope - right.slope) > 0.16) {
+    if (leftDistance <= rightDistance) {
+      right = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...rightOptions,
+        slopeCenter: left.slope,
+        slopeTolerance: 0.14,
+      });
+    } else {
+      left = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...leftOptions,
+        slopeCenter: right.slope,
+        slopeTolerance: 0.14,
+      });
+    }
+  }
+  const topDistance =
+    Math.abs(top.position - topOptions.expectedPosition) / box.height;
+  const bottomDistance =
+    Math.abs(bottom.position - bottomOptions.expectedPosition) / box.height;
+  if (Math.abs(top.slope - bottom.slope) > 0.16) {
+    if (topDistance <= bottomDistance) {
+      bottom = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...bottomOptions,
+        slopeCenter: top.slope,
+        slopeTolerance: 0.14,
+      });
+    } else {
+      top = strongestLine(data, imageWidth, imageHeight, channels, {
+        ...topOptions,
+        slopeCenter: bottom.slope,
+        slopeTolerance: 0.14,
+      });
+    }
+  }
+  const alignedHorizontalSlope = (top.slope + bottom.slope) / 2;
+  const alignedVerticalSlope = (left.slope + right.slope) / 2;
+  const lineHypotheses = [
+    { left, right, top, bottom, hypothesis: "independent" },
+    {
+      left: strongestLine(data, imageWidth, imageHeight, channels, {
+        ...leftOptions,
+        slopeCenter: -alignedHorizontalSlope,
+        slopeTolerance: 0.28,
+      }),
+      right: strongestLine(data, imageWidth, imageHeight, channels, {
+        ...rightOptions,
+        slopeCenter: -alignedHorizontalSlope,
+        slopeTolerance: 0.28,
+      }),
+      top,
+      bottom,
+      hypothesis: "horizontal-edges-anchor-rotation",
+    },
+    {
+      left,
+      right,
+      top: strongestLine(data, imageWidth, imageHeight, channels, {
+        ...topOptions,
+        slopeCenter: -alignedVerticalSlope,
+        slopeTolerance: 0.28,
+      }),
+      bottom: strongestLine(data, imageWidth, imageHeight, channels, {
+        ...bottomOptions,
+        slopeCenter: -alignedVerticalSlope,
+        slopeTolerance: 0.28,
+      }),
+      hypothesis: "vertical-edges-anchor-rotation",
+    },
+  ];
+  const evaluatedHypotheses = lineHypotheses.map((lineSet) =>
+    evaluateLineHypothesis(lineSet, box, imageWidth, imageHeight),
+  );
+  const independentResult = evaluatedHypotheses[0];
+  if (independentResult.refined) return independentResult;
+  const compatibleResult = evaluatedHypotheses
+    .slice(1)
+    .filter((result) => result.refined)
+    .sort((a, b) => b.quality - a.quality)[0];
+  if (compatibleResult) return compatibleResult;
+  return evaluatedHypotheses.sort((a, b) => b.quality - a.quality)[0];
+}
+
+function evaluateLineHypothesis(
+  { left, right, top, bottom, hypothesis },
+  box,
+  imageWidth,
+  imageHeight,
+) {
   const lines = [left, right, top, bottom];
   const minimumScore = Math.min(...lines.map((line) => line.score));
   const meanScore = lines.reduce((sum, line) => sum + line.score, 0) / 4;
   const confidence = clamp((minimumScore * 0.6 + meanScore * 0.4) / 70, 0, 1);
+  const verticalSlope = (left.slope + right.slope) / 2;
+  const horizontalSlope = (top.slope + bottom.slope) / 2;
+  const rotationAgreement = clamp(
+    1 - Math.abs(verticalSlope + horizontalSlope) / 0.7,
+    0.15,
+    1,
+  );
+  const quality = confidence * (0.72 + rotationAgreement * 0.28);
   if (minimumScore < 9 || meanScore < 14) {
     return {
       refined: false,
       confidence,
+      quality,
       reason: "Badge edges were not continuous enough to fit safely.",
+      _lines: { left, right, top, bottom, hypothesis },
     };
   }
 
@@ -627,13 +842,21 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     intersectEdgeLines(left, bottom),
   ];
   if (points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
-    return { refined: false, confidence, reason: "Fitted edges did not intersect." };
+    return {
+      refined: false,
+      confidence,
+      quality,
+      reason: "Fitted edges did not intersect.",
+      _lines: { left, right, top, bottom, hypothesis },
+    };
   }
   if (!isConvexPoints(points)) {
     return {
       refined: false,
       confidence,
+      quality,
       reason: "Fitted corners did not form a convex badge.",
+      _lines: { left, right, top, bottom, hypothesis },
     };
   }
   const fittedBounds = boundsForPoints(points);
@@ -659,12 +882,20 @@ function fitQuadrilateral(data, imageWidth, imageHeight, channels, box) {
     return {
       refined: false,
       confidence,
+      quality,
       reason:
         "Fitted badge shape failed the size safety check " +
         `(width ${widthRatio.toFixed(2)}x, height ${heightRatio.toFixed(2)}x, area ${areaRatio.toFixed(2)}x).`,
+      _lines: { left, right, top, bottom, hypothesis },
     };
   }
-  return { refined: true, confidence, points };
+  return {
+    refined: true,
+    confidence,
+    quality,
+    points,
+    _lines: { left, right, top, bottom, hypothesis },
+  };
 }
 
 function strongestLine(data, width, height, channels, options) {
@@ -677,11 +908,20 @@ function strongestLine(data, width, height, channels, options) {
     center,
     span,
     expectedPosition,
+    slopeCenter,
+    slopeTolerance,
   } = options;
   const sampleCount = 54;
   const positionStep = Math.max(1, span / 72);
   let best = { slope: 0, position: (positionStart + positionEnd) / 2, score: 0 };
-  for (let slope = -0.82; slope <= 0.8201; slope += 0.025) {
+  let nearExpectedBest = null;
+  const slopeStart = Number.isFinite(slopeCenter)
+    ? clamp(slopeCenter - slopeTolerance, -0.82, 0.82)
+    : -0.82;
+  const slopeEnd = Number.isFinite(slopeCenter)
+    ? clamp(slopeCenter + slopeTolerance, -0.82, 0.82)
+    : 0.82;
+  for (let slope = slopeStart; slope <= slopeEnd + 0.0001; slope += 0.025) {
     for (
       let position = positionStart;
       position <= positionEnd;
@@ -716,9 +956,33 @@ function strongestLine(data, width, height, channels, options) {
         mean * (0.55 + continuity * 0.45) + percentile60 * 0.25;
       const proximity =
         Math.abs(position - expectedPosition) / Math.max(1, span);
-      const score = edgeScore * clamp(1 - proximity * 0.18, 0.82, 1);
-      if (score > best.score) best = { slope, position, score, center, orientation };
+      // Detector bounds are intentionally padded but still provide valuable
+      // outer-boundary evidence. Strong internal card graphics should not beat
+      // a slightly fainter edge that is materially closer to the detector's
+      // corresponding side.
+      const score = edgeScore * clamp(1 - proximity * 1.8, 0.3, 1);
+      const candidate = {
+        slope,
+        position,
+        score,
+        center,
+        orientation,
+        proximity,
+      };
+      if (score > best.score) best = candidate;
+      if (
+        proximity <= 0.09 &&
+        (!nearExpectedBest || score > nearExpectedBest.score)
+      ) {
+        nearExpectedBest = candidate;
+      }
     }
+  }
+  if (
+    best.proximity > 0.09 &&
+    nearExpectedBest?.score >= best.score * 0.62
+  ) {
+    return nearExpectedBest;
   }
   return best;
 }
@@ -738,7 +1002,7 @@ function normalGradient(
     orientation === "vertical"
       ? { x: 1 / length, y: -slope / length }
       : { x: -slope / length, y: 1 / length };
-  const radius = 1.6;
+  const radius = 2.4;
   const first = sampleColor(
     data,
     width,
@@ -810,6 +1074,34 @@ function safestCornerBlend(original, fitted, paddingPercent, width, height) {
     x: center.x + (point.x - center.x) * 0.76,
     y: center.y + (point.y - center.y) * 0.76,
   }));
+  const topAngle = Math.abs(
+    Math.atan2(fitted[1].y - fitted[0].y, fitted[1].x - fitted[0].x),
+  );
+  const bottomAngle = Math.abs(
+    Math.atan2(fitted[2].y - fitted[3].y, fitted[2].x - fitted[3].x),
+  );
+  const fittedAreaRatio = polygonArea(fitted) / Math.max(1, polygonArea(original));
+  const expandedFitted = expandPoints(
+    fitted,
+    paddingPercent / 100,
+    width,
+    height,
+  );
+  // Axis-aligned detector corners are not meaningful coverage targets for a
+  // clearly rotated landscape card. Preserve a geometrically consistent fit
+  // when its padded polygon still protects the detector center; otherwise the
+  // generic safety blend would pull correct corners back into a loose diamond.
+  if (
+    Math.min(topAngle, bottomAngle) >= 0.18 &&
+    fittedAreaRatio >= 0.35 &&
+    fittedAreaRatio <= 1.45 &&
+    pointInPolygonOrEdge(center, expandedFitted)
+  ) {
+    return fitted.map((point) => ({
+      x: clamp(point.x, 0, width),
+      y: clamp(point.y, 0, height),
+    }));
+  }
   for (let amount = 1; amount >= 0; amount -= 0.05) {
     const candidate = fitted.map((point, index) => ({
       x: clamp(

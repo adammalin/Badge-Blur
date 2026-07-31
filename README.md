@@ -112,9 +112,13 @@ verify it and obtain any missing small files.
    and edge-cropped credentials use a stricter classifier-confirmed fallback
    when the normal torso boundary would otherwise remove them.
 8. The local corner fitter refines strong badge edges and keeps a rectangle
-   when the fit is uncertain.
-9. Review the active image in the large viewer. Click or horizontally scroll
-   the thumbnail filmstrip, use Previous/Next, or press the left/right arrow
+   when the fit is uncertain. A temporary local-contrast analysis pass helps
+   recover faint plastic-holder edges; only its corner coordinates are used,
+   and the original image contrast and exported pixels remain unchanged.
+9. When processing finishes, the green completion screen pauses the workflow.
+   Choose **Review photos** to begin with image 1 in the large viewer. Click or
+   horizontally scroll the thumbnail filmstrip, use Previous/Next, or press the
+   left/right arrow
    keys to move through the batch. Use **Fit in window** to see the complete
    frame or **Fill width** for a centered, width-filling inspection view. The
    Fill width and zoomed views expand the photo stage vertically so the whole
@@ -262,8 +266,12 @@ archive preserves the remaining source metadata for audit/recovery.
 - The model, tokenizer, and ONNX runtime files are bundled locally.
 - Content Security Policy allows network reads only from the local app origin
   and local in-memory `blob:` image URLs.
+- Electron independently cancels every renderer HTTP, HTTPS, and WebSocket
+  request whose destination is not loopback, including private-LAN addresses.
 - The server binds to `127.0.0.1`, not the LAN.
 - There are no analytics, telemetry, accounts, or cloud APIs.
+- `npm run test:security` verifies the loopback binding, offline model policy,
+  browser connection policy, and Electron's non-local request denial.
 - The bundled Electron Chromium runtime provides the folder-write API and
   native folder chooser consistently on both supported operating systems.
   Files are written sequentially into the source folder's `exports` subfolder
@@ -350,6 +358,12 @@ Requirements:
 - An Apple-silicon Mac running macOS 13 or later.
 - Internet access during first setup to download the pinned public npm
   packages, official Node.js runtime when needed, and local model files.
+
+The installer and first-time setup therefore use the internet. Normal image
+review and export do not: after setup, model inference and image processing use
+only bundled files and the loopback service. Clicking the GitHub or email links
+in the footer deliberately hands that link to the user's default browser or
+mail application; Badge Blur does not attach image or project data.
 
 The setup uses an existing Node.js 22 installation when available. If Node is
 missing or incompatible, it downloads the pinned official Node.js 22 runtime
@@ -539,7 +553,9 @@ review for an official lab-wide release.
   falls back to the original detection rectangle.
 - The corner fitter does not use a second cloud or generative model. It scores
   continuous local edges inside the Grounding DINO detection and verifies that the
-  expanded fitted mask still covers the original detection.
+  expanded fitted mask still covers the original detection. Opposite edges are
+  checked together so strong internal card graphics or shirt folds cannot define
+  incompatible corners, including on rotated horizontal badges.
 - Feathering softens the transition at the expanded mask boundary. Keep enough
   mask expansion to cover all sensitive badge pixels. When a mask reaches the
   physical image boundary, its blur remains fully applied through the final row

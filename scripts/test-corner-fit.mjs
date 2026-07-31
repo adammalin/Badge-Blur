@@ -11,6 +11,7 @@ let detected = 0;
 let fitted = 0;
 let fallback = 0;
 const files = [];
+const resultsByImage = new Map();
 
 for (const entry of frozenDetections) {
   const source = await readFile(resolve("demo-test-images", entry.imageName));
@@ -19,6 +20,7 @@ for (const entry of frozenDetections) {
     paddingPercent: 18,
   });
   const refined = result.masks.filter((mask) => mask.refined).length;
+  resultsByImage.set(entry.imageName, result.masks);
   detected += result.masks.length;
   fitted += refined;
   fallback += result.masks.length - refined;
@@ -30,10 +32,43 @@ for (const entry of frozenDetections) {
   });
 }
 
-if (detected !== 11 || fitted !== 10 || fallback !== 1) {
+if (detected !== 11 || fitted !== 11 || fallback !== 0) {
   throw new Error(
-    `Corner-fit regression: expected 11 detections, 10 fits, and 1 fallback; ` +
+    `Corner-fit regression: expected 11 detections, 11 fits, and 0 fallbacks; ` +
       `received ${detected}, ${fitted}, and ${fallback}.`,
+  );
+}
+
+const portraitFit = resultsByImage.get("01-single-frontal-badge.png")?.[0];
+if (
+  !portraitFit?.refined ||
+  portraitFit.points[2].y < 1105 ||
+  portraitFit.points[3].y < 1105 ||
+  Math.abs(portraitFit.points[2].y - portraitFit.points[3].y) > 4
+) {
+  throw new Error(
+    "Corner-fit regression: the portrait badge bottom followed an internal graphic instead of the outer card edge.",
+  );
+}
+
+const lowContrastLandscapeFit = resultsByImage.get(
+  "04-outdoor-glare-motion-badge.png",
+)?.[0];
+const landscapeTopAngle = lowContrastLandscapeFit
+  ? Math.atan2(
+      lowContrastLandscapeFit.points[1].y -
+        lowContrastLandscapeFit.points[0].y,
+      lowContrastLandscapeFit.points[1].x -
+        lowContrastLandscapeFit.points[0].x,
+    )
+  : 0;
+if (
+  !lowContrastLandscapeFit?.refined ||
+  !/enhanced analysis/.test(lowContrastLandscapeFit.reason) ||
+  landscapeTopAngle < 0.5
+) {
+  throw new Error(
+    "Corner-fit regression: the low-contrast landscape badge did not receive the rotated enhanced-analysis fit.",
   );
 }
 
@@ -95,6 +130,8 @@ console.log(
       fallback,
       chromaticEdgeFit: true,
       chromaticCornerError: Number(chromaticCornerError.toFixed(2)),
+      portraitOuterBottomFit: true,
+      lowContrastLandscapeFit: true,
       files,
     },
     null,
