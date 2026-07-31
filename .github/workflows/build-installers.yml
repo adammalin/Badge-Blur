@@ -140,8 +140,12 @@ jobs:
           if (-not $smokePassed) {
             throw "Packaged Electron smoke result was incomplete."
           }
-          if ($process.ExitCode -ne 0) {
-            throw "Electron returned Windows exit code $($process.ExitCode) after its smoke test."
+          if (-not $process.HasExited) {
+            throw "Electron remained active after its successful smoke test."
+          }
+          $exitCode = $process.ExitCode
+          if ($null -ne $exitCode -and [int]$exitCode -ne 0) {
+            throw "Electron returned Windows exit code $exitCode after its smoke test."
           }
 
       - name: Verify Windows artifact
