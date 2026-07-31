@@ -736,11 +736,19 @@ function updateViewerLayout(card, item) {
   frame.style.height = `${expandedHeight}px`;
   const stageWidth = Math.max(viewportWidth, size.width);
   const stageHeight = expandedHeight;
-  const left = Math.max(0, (stageWidth - size.width) / 2);
-  const top = Math.max(0, (stageHeight - size.height) / 2);
 
   stage.style.width = `${stageWidth}px`;
   stage.style.height = `${stageHeight}px`;
+  // CSS minimum sizing and native scrollbar geometry can make the rendered
+  // stage slightly wider than the requested client width on some platforms.
+  // Center against the width users actually see instead of the requested
+  // width so fit-mode photos do not drift on Windows.
+  const renderedStageWidth = Math.max(
+    viewportWidth,
+    stage.getBoundingClientRect().width,
+  );
+  const left = Math.max(0, (renderedStageWidth - size.width) / 2);
+  const top = Math.max(0, (stageHeight - size.height) / 2);
   for (const media of [canvas, afterImage]) {
     media.style.left = `${left}px`;
     media.style.top = `${top}px`;

@@ -336,6 +336,15 @@ function createMainWindow(url) {
       const capabilities = await mainWindow.webContents.executeJavaScript(`(async () => {
         const wait = (milliseconds) =>
           new Promise((resolve) => setTimeout(resolve, milliseconds));
+        const isMediaCenteredInViewport = (viewer, media) => {
+          if (!viewer || !media) return false;
+          const viewerRect = viewer.getBoundingClientRect();
+          const mediaRect = media.getBoundingClientRect();
+          const viewportCenter =
+            viewerRect.left + viewer.clientLeft + viewer.clientWidth / 2;
+          const mediaCenter = mediaRect.left + mediaRect.width / 2;
+          return Math.abs(mediaCenter - viewportCenter) <= 2;
+        };
         const result = {
           appVersion:
             document.querySelector("meta[name='badge-blur-version']")?.content ||
@@ -422,36 +431,16 @@ function createMainWindow(url) {
           processingReviewState.activeIndex === 0 &&
           processingReviewState.workflowStage === "review";
         await wait(25);
-        const batchStartViewerRect = document
-          .querySelector(".canvas-wrap")
-          ?.getBoundingClientRect();
-        const batchStartCanvasRect = document
-          .querySelector(".canvas-wrap canvas")
-          ?.getBoundingClientRect();
-        const photoCenteredAtBatchStart =
-          batchStartViewerRect &&
-          batchStartCanvasRect &&
-          Math.abs(
-            batchStartCanvasRect.left +
-              batchStartCanvasRect.width / 2 -
-              (batchStartViewerRect.left + batchStartViewerRect.width / 2),
-          ) <= 2;
+        const photoCenteredAtBatchStart = isMediaCenteredInViewport(
+          document.querySelector(".canvas-wrap"),
+          document.querySelector(".canvas-wrap canvas"),
+        );
         document.querySelector(".fit-view")?.click();
         await wait(25);
-        const initialViewerRect = document
-          .querySelector(".canvas-wrap")
-          ?.getBoundingClientRect();
-        const initialCanvasRect = document
-          .querySelector(".canvas-wrap canvas")
-          ?.getBoundingClientRect();
-        const photoCentered =
-          initialViewerRect &&
-          initialCanvasRect &&
-          Math.abs(
-            initialCanvasRect.left +
-              initialCanvasRect.width / 2 -
-              (initialViewerRect.left + initialViewerRect.width / 2),
-          ) <= 2;
+        const photoCentered = isMediaCenteredInViewport(
+          document.querySelector(".canvas-wrap"),
+          document.querySelector(".canvas-wrap canvas"),
+        );
         const bodyStyle = getComputedStyle(document.body);
         const backgroundDoesNotRepeat =
           bodyStyle.backgroundRepeat === "no-repeat" &&
