@@ -1,5 +1,7 @@
-export function filterBadgeDetections(boxes, image) {
-  const plausible = boxes.filter((box) => isPlausibleBadgeBox(box, image));
+export function filterBadgeDetections(boxes, image, options = {}) {
+  const plausible = boxes.filter((box) =>
+    isPlausibleBadgeBox(box, image, options),
+  );
   return deduplicateBadgeDetections(
     removeLikelyLanyardExtensions(removeLowConfidenceContainers(plausible)),
     0.32,
@@ -44,7 +46,7 @@ export function isComplementaryBadgeOrientation(candidate, existingBadges) {
   return true;
 }
 
-export function isPlausibleBadgeBox(box, image) {
+export function isPlausibleBadgeBox(box, image, options = {}) {
   const area = box.width * box.height;
   const imageArea = image.width * image.height;
   const areaRatio = area / imageArea;
@@ -58,7 +60,7 @@ export function isPlausibleBadgeBox(box, image) {
     box.height > 4 &&
     area > 40 &&
     areaRatio >= 0.00008 &&
-    areaRatio <= 0.04 &&
+    areaRatio <= (Number(options.maxAreaRatio) || 0.04) &&
     aspectRatio >= 0.25 &&
     aspectRatio <= 2.2 &&
     (heightRatio <= 0.25 || aspectRatio >= 0.75) &&

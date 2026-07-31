@@ -3,6 +3,11 @@ import {
   CLASSIFIER_MARGIN,
   CLASSIFIER_MODEL_ID,
   CLASSIFIER_POSITIVE_LABEL_COUNT,
+  CROPPED_FOREGROUND_CLASSIFIER_MARGIN,
+  CROPPED_FOREGROUND_MIN_SCORE,
+  EXTENDED_TORSO_CLASSIFIER_MARGIN,
+  EXTENDED_TORSO_MIN_SCORE,
+  GLOBAL_BADGE_MAX_AREA_RATIO,
   GLOBAL_CLASSIFIER_LABELS,
   GLOBAL_CLASSIFIER_MAX_SCORE,
   GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
@@ -11,11 +16,15 @@ import {
   LANYARD_PROMPT,
   LANYARD_THRESHOLD,
   MODEL_ID,
+  NO_PERSON_CLASSIFIER_MARGIN,
+  NO_PERSON_MIN_SCORE,
   PERSON_THRESHOLD,
+  TORSO_BADGE_MAX_AREA_RATIO,
   TORSO_THRESHOLD,
 } from "./detector-config.js";
 import {
   classifierEvidence,
+  contextualBadgeDecision,
   globalClassifierDecision,
 } from "./classifier-utils.js";
 import {
@@ -53,7 +62,10 @@ import { runWorkerPool } from "./worker-pool.js";
 import { maskDeleteControlCenter } from "./mask-controls.js";
 import {
   candidateCenterInsideRegion,
+  candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
+  extendedTorsoRegionForPerson,
+  isPlausiblePersonBox,
   lanyardBadgeSearchRegion,
   torsoRegionForPerson,
 } from "./person-guidance.js";
@@ -97,7 +109,7 @@ import {
   steppedViewZoom,
 } from "./view-transform.js";
 
-const APP_VERSION = "0.22.1";
+const APP_VERSION = "0.22.2";
 const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -2075,7 +2087,9 @@ async function detectItem(item, models = modelWorkers[0]) {
     const candidates = output.map((result) =>
       normalizeDetection(result, item, scaleX, scaleY),
     );
-    const unverifiedModelBoxes = filterBadgeDetections(candidates, item);
+    const unverifiedModelBoxes = filterBadgeDetections(candidates, item, {
+      maxAreaRatio: GLOBAL_BADGE_MAX_AREA_RATIO,
+    });
     const personGuidance = await timedItemStage(
       item,
       "personDetectionMs",
@@ -2091,6 +2105,7 @@ async function detectItem(item, models = modelWorkers[0]) {
           unverifiedModelBoxes,
           models,
           torsoRegions,
+          personGuidance,
         ),
     );
     const modelBoxes = globalVerification.retained.map((box) =>
@@ -2170,18 +2185,54 @@ async function detectItem(item, models = modelWorkers[0]) {
   updateSummary();
 }
 
-async function verifyGlobalCandidates(item, boxes, models, torsoRegions = []) {
+async function verifyGlobalCandidates(
+  item,
+  boxes,
+  models,
+  torsoRegions = [],
+  personGuidance = [],
+) {
   const retained = [];
   const rejected = [];
+  const extendedTorsoRegions = personGuidance.map((guide) =>
+    extendedTorsoRegionForPerson(guide.person, item.width, item.height),
+  );
   for (const box of boxes) {
-    if (!candidateInsideTorso(box, torsoRegions)) {
+    const insideTorso = candidateInsideTorso(box, torsoRegions);
+    const insideExtendedTorso = candidateInsideTorso(
+      box,
+      extendedTorsoRegions,
+    );
+    const croppedForeground = candidateLooksLikeCroppedForeground(
+      box,
+      item.width,
+      item.height,
+    );
+    const noPerson = personGuidance.length === 0;
+    const fallbackRequirements = insideExtendedTorso
+      ? {
+          minimumDetectionScore: EXTENDED_TORSO_MIN_SCORE,
+          minimumClassifierMargin: EXTENDED_TORSO_CLASSIFIER_MARGIN,
+        }
+      : croppedForeground
+        ? {
+            minimumDetectionScore: CROPPED_FOREGROUND_MIN_SCORE,
+            minimumClassifierMargin: CROPPED_FOREGROUND_CLASSIFIER_MARGIN,
+          }
+        : noPerson
+          ? {
+              minimumDetectionScore: NO_PERSON_MIN_SCORE,
+              minimumClassifierMargin: NO_PERSON_CLASSIFIER_MARGIN,
+            }
+          : null;
+    if (!insideTorso && !fallbackRequirements) {
       rejected.push({
         ...box,
         classifierDecision: "rejected-outside-person",
       });
       continue;
     }
-    if (box.score > GLOBAL_CLASSIFIER_MAX_SCORE) {
+    if (insideTorso && box.score > GLOBAL_CLASSIFIER_MAX_SCORE) {
       retained.push({
         ...box,
         classifierDecision: "kept-high-confidence",
@@ -2202,17 +2253,21 @@ async function verifyGlobalCandidates(item, boxes, models, torsoRegions = []) {
       classifierNegativeScore: evidence.negativeScore,
       classifierMargin: evidence.margin,
       classifierTopLabel: evidence.topLabel,
-      classifierDecision: globalClassifierDecision(
-        box.score,
-        evidence,
-        GLOBAL_CLASSIFIER_MAX_SCORE,
-        GLOBAL_CLASSIFIER_REJECT_MARGIN,
-      ),
+      classifierDecision: insideTorso
+        ? globalClassifierDecision(
+            box.score,
+            evidence,
+            GLOBAL_CLASSIFIER_MAX_SCORE,
+            GLOBAL_CLASSIFIER_REJECT_MARGIN,
+          )
+        : contextualBadgeDecision(box.score, evidence, {
+            eligibleContext: true,
+            ...fallbackRequirements,
+          }),
     };
-    (classified.classifierDecision === "rejected-negative"
+    (classified.classifierDecision.startsWith("rejected-")
       ? rejected
-      : retained
-    ).push(classified);
+      : retained).push(classified);
   }
   return { retained, rejected };
 }
@@ -2239,7 +2294,7 @@ async function detectPersonGuidance(item, models) {
   const persons = deduplicateBadgeDetections(
     personOutput
       .map((result) => normalizeDetection(result, item, scaleX, scaleY))
-      .filter((box) => isPlausiblePerson(box, item)),
+      .filter((box) => isPlausiblePersonBox(box, item.width, item.height)),
     0.52,
   ).slice(0, 24);
   return persons.map((person, index) => {
@@ -2343,6 +2398,7 @@ async function detectTorsoRescues(
       const best = filterBadgeDetections(
         output.map((result) => normalizeDetection(result, cropImage)),
         cropImage,
+        { maxAreaRatio: TORSO_BADGE_MAX_AREA_RATIO },
       )
         .filter((box) => isPlausibleTorsoBadge(box, cropImage))
         .filter((box) =>
@@ -2440,18 +2496,6 @@ async function classifyBadgePatch(
   }
 }
 
-function isPlausiblePerson(box, item) {
-  const areaRatio = (box.width * box.height) / (item.width * item.height);
-  const aspect = box.width / box.height;
-  return (
-    box.label === "person" &&
-    areaRatio >= 0.0025 &&
-    areaRatio <= 0.82 &&
-    aspect >= 0.14 &&
-    aspect <= 1.45
-  );
-}
-
 function isPlausibleTorsoBadge(box, crop) {
   const aspect = box.width / box.height;
   const areaRatio = (box.width * box.height) / (crop.width * crop.height);
@@ -2461,7 +2505,7 @@ function isPlausibleTorsoBadge(box, crop) {
     aspect >= 0.3 &&
     aspect <= 2.2 &&
     areaRatio >= 0.00025 &&
-    areaRatio <= 0.035 &&
+    areaRatio <= TORSO_BADGE_MAX_AREA_RATIO &&
     centerX >= 0.1 &&
     centerX <= 0.9 &&
     centerY >= 0.16 &&

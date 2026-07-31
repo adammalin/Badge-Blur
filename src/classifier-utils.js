@@ -37,3 +37,22 @@ export function globalClassifierDecision(
     ? "kept-classified"
     : "rejected-negative";
 }
+
+export function contextualBadgeDecision(
+  detectionScore,
+  evidence,
+  {
+    eligibleContext,
+    minimumDetectionScore,
+    minimumClassifierMargin,
+  },
+) {
+  if (!eligibleContext) return "rejected-outside-person";
+  if (detectionScore < minimumDetectionScore) {
+    return "rejected-context-low-confidence";
+  }
+  if (evidence.margin < minimumClassifierMargin) {
+    return "rejected-context-negative";
+  }
+  return "kept-context-rescue";
+}

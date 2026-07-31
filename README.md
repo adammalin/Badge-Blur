@@ -108,7 +108,9 @@ verify it and obtain any missing small files.
    without a badge, it runs a targeted high-resolution torso pass, detects
    lanyards separately, and lowers the badge threshold only along the
    neck-to-waist/lanyard path. CLIP still rejects likely clothing details,
-   signs, patches, and equipment labels.
+   signs, patches, and equipment labels. Close portraits, low-hanging cards,
+   and edge-cropped credentials use a stricter classifier-confirmed fallback
+   when the normal torso boundary would otherwise remove them.
 8. The local corner fitter refines strong badge edges and keeps a rectangle
    when the fit is uncertain.
 9. Review the active image in the large viewer. Click or horizontally scroll
@@ -526,7 +528,7 @@ review for an official lab-wide release.
 ## MVP limitations
 
 - Human review is required.
-- The torso-gated enhanced path on the reviewed 18-image local regression
+- The torso-guided enhanced path on the reviewed 18-image local regression
   currently measures 75.6% automatic badge recall and 89.5% mask precision.
   It is useful as a first-pass reviewer,
   not as an unattended compliance control. White/translucent cards and distant
@@ -539,7 +541,9 @@ review for an official lab-wide release.
   continuous local edges inside the Grounding DINO detection and verifies that the
   expanded fitted mask still covers the original detection.
 - Feathering softens the transition at the expanded mask boundary. Keep enough
-  mask expansion to cover all sensitive badge pixels.
+  mask expansion to cover all sensitive badge pixels. When a mask reaches the
+  physical image boundary, its blur remains fully applied through the final row
+  or column instead of feathering back toward the unredacted source.
 - A lighter Gaussian setting can preserve too much text on unusually large or
   high-contrast credentials. Always review the After view at useful zoom.
 - The bundled model is fixed during inference. Reviewed corrections are saved

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "coordinateSystem": "normalized-image-space",
+  "description": "Reviewed badge-center points for the five fictional demo images.",
+  "images": {
+    "01-single-frontal-badge.png": [[0.511719, 0.666992]],
+    "02-two-person-event-badges.png": [[0.334635, 0.774902], [0.637044, 0.76709]],
+    "03-four-person-group-badges.png": [[0.611003, 0.546875], [0.788086, 0.723145], [0.423828, 0.6875], [0.242839, 0.537109]],
+    "04-outdoor-glare-motion-badge.png": [[0.525391, 0.658203]],
+    "05-low-light-multiscale-badges.png": [[0.814453, 0.456543], [0.553385, 0.558594], [0.242188, 0.887695]]
+  }
+}

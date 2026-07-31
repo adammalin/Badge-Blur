@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   classifierEvidence,
+  contextualBadgeDecision,
   globalClassifierDecision,
 } from "../src/classifier-utils.js";
 
@@ -22,6 +23,36 @@ assert.equal(Number(evidence.margin.toFixed(2)), -0.62);
 assert.equal(
   globalClassifierDecision(0.42, evidence, 0.5, -0.5),
   "rejected-negative",
+);
+assert.equal(
+  contextualBadgeDecision(0.76, {
+    ...evidence,
+    margin: 0.74,
+  }, {
+    eligibleContext: true,
+    minimumDetectionScore: 0.45,
+    minimumClassifierMargin: 0.2,
+  }),
+  "kept-context-rescue",
+);
+assert.equal(
+  contextualBadgeDecision(0.8, evidence, {
+    eligibleContext: true,
+    minimumDetectionScore: 0.45,
+    minimumClassifierMargin: 0.2,
+  }),
+  "rejected-context-negative",
+);
+assert.equal(
+  contextualBadgeDecision(0.9, {
+    ...evidence,
+    margin: 0.74,
+  }, {
+    eligibleContext: false,
+    minimumDetectionScore: 0.45,
+    minimumClassifierMargin: 0.2,
+  }),
+  "rejected-outside-person",
 );
 assert.equal(
   globalClassifierDecision(0.55, evidence, 0.5, -0.5),

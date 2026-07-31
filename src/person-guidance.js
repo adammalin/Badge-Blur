@@ -13,6 +13,36 @@ export function torsoRegionForPerson(person, imageWidth, imageHeight) {
   );
 }
 
+export function extendedTorsoRegionForPerson(person, imageWidth, imageHeight) {
+  return clampRegion(
+    {
+      left: person.x + person.width * 0.05,
+      top: person.y + person.height * 0.03,
+      width: person.width * 0.9,
+      // This region is only a classifier-confirmed fallback for close crops and
+      // low-hanging lanyard cards. The normal path keeps the tighter torso.
+      height: person.height * 0.94,
+    },
+    imageWidth,
+    imageHeight,
+  );
+}
+
+export function isPlausiblePersonBox(box, imageWidth, imageHeight) {
+  const areaRatio =
+    (box.width * box.height) / Math.max(1, imageWidth * imageHeight);
+  const aspect = box.width / Math.max(1, box.height);
+  return (
+    box.label === "person" &&
+    areaRatio >= 0.0025 &&
+    // A close portrait can legitimately fill almost the entire frame. The
+    // former 0.82 ceiling discarded those people and therefore every badge.
+    areaRatio <= 0.98 &&
+    aspect >= 0.14 &&
+    aspect <= 1.45
+  );
+}
+
 export function candidateInsideTorso(candidate, regions) {
   if (!Array.isArray(regions) || regions.length === 0) return false;
   const centerX = candidate.x + candidate.width / 2;

@@ -10,6 +10,7 @@ const tests = [
   "scripts/test-worker-pool.mjs",
   "scripts/test-classifier-policy.mjs",
   "scripts/test-detection-orientation.mjs",
+  "scripts/test-detection-scale-policy.mjs",
   "scripts/test-person-guidance.mjs",
   "scripts/test-review-attention.mjs",
   "scripts/test-review-ui.mjs",

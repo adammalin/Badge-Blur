@@ -1,7 +1,7 @@
 # MVP demo test report
 
-Date: 2026-07-27
-Source candidate: `0.22.1`; locally qualified packaged Mac candidate: `0.22.1`;
+Date: 2026-07-31
+Source candidate: `0.22.2`; locally qualified packaged Mac candidate: `0.22.1`;
 Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -503,6 +503,29 @@ c2efd15fe98c1e4936898fd3a5910e75c48256ecdc953ef23e2646da2f5b0705  Badge-Blur-Mac
 The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
+
+### Version 0.22.2 source-release qualification
+
+The local source candidate tested on 2026-07-31 passed:
+
+- all 23 deterministic tests, including close-portrait person geometry,
+  large-badge area policy, contextual classifier policy, and left/bottom
+  physical-image-edge redaction;
+- the five-image production-path evaluation at 11/11 covered badge points,
+  11 true-positive masks, zero false masks, 100% recall, and 100% precision;
+- the frozen 18-photo production regression at the unchanged qualified result
+  of 34/45 covered points, 34 true-positive masks, four false masks, 75.6%
+  recall, and 89.5% precision;
+- a pixel-level feather regression in which detail remaining at the physical
+  left and bottom image edges measured 10.9% and 4.5%, respectively; and
+- the production Vite build and complete Electron review smoke, including
+  local-only service startup and clean shutdown.
+
+The corresponding local reports are
+`test-output/evaluation-20260731-120742-03a4f309/` for the fictional demo set
+and `test-output/evaluation-20260731-120516-644e90b5/` for the reviewed local
+photo set. This qualification covers the 0.22.2 main-branch source release.
+Packaged macOS and Windows installers remain at 0.22.1 and were not rebuilt.
 
 Human review remains required. Before use as a compliance control, test with a
 cleared, representative local set covering real camera resolutions, badge

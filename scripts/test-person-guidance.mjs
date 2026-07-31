@@ -3,6 +3,8 @@ import {
   candidateCenterInsideRegion,
   candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
+  extendedTorsoRegionForPerson,
+  isPlausiblePersonBox,
   lanyardBadgeSearchRegion,
   torsoRegionForPerson,
 } from "../src/person-guidance.js";
@@ -24,6 +26,40 @@ assert.equal(
     [region],
   ),
   true,
+);
+const extendedRegion = extendedTorsoRegionForPerson(
+  { x: 100, y: 50, width: 200, height: 500 },
+  800,
+  600,
+);
+assert.deepEqual(extendedRegion, {
+  left: 110,
+  top: 65,
+  width: 180,
+  height: 470,
+});
+assert.equal(
+  candidateInsideTorso(
+    { x: 165, y: 410, width: 70, height: 60 },
+    [extendedRegion],
+  ),
+  true,
+);
+assert.equal(
+  isPlausiblePersonBox(
+    { label: "person", x: 10, y: 20, width: 900, height: 1450 },
+    1024,
+    1536,
+  ),
+  true,
+);
+assert.equal(
+  isPlausiblePersonBox(
+    { label: "person", x: 0, y: 0, width: 1024, height: 1536 },
+    1024,
+    1536,
+  ),
+  false,
 );
 assert.equal(
   candidateLooksLikeCroppedForeground(
@@ -97,7 +133,9 @@ console.log(
     croppedForegroundBadgeRetained: true,
     backgroundSignRejected: true,
     partialOverlapRejected: true,
-    noPersonCandidatesRejected: true,
+    noPersonRequiresClassifierFallback: true,
+    closePortraitPersonRetained: true,
+    extendedTorsoFallbackCovered: true,
     lanyardBadgeSearchTargeted: true,
   }),
 );

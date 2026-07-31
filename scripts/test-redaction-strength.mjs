@@ -69,11 +69,49 @@ const perMaskOverrideResult = await redactImage(
   },
 );
 
+const edgeWidth = 360;
+const edgeHeight = 240;
+const edgeSource = await sharp({
+  create: {
+    width: edgeWidth,
+    height: edgeHeight,
+    channels: 3,
+    background: "#ffffff",
+  },
+})
+  .composite([
+    {
+      input: Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="${edgeWidth}" height="${edgeHeight}">
+          <defs><pattern id="p" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="6" height="12" fill="#000000"/><rect x="6" width="6" height="12" fill="#ffffff"/></pattern></defs>
+          <rect x="0" y="30" width="190" height="210" fill="url(#p)"/>
+        </svg>
+      `),
+    },
+  ])
+  .png()
+  .toBuffer();
+const edgeResult = await redactImage(edgeSource, "edge-badge.png", {
+  masks: [{
+    points: [
+      { x: 0, y: 30 },
+      { x: 190, y: 30 },
+      { x: 190, y: 240 },
+      { x: 0, y: 240 },
+    ],
+  }],
+  style: "gaussian",
+  strength: 8,
+  featherPercent: 20,
+});
+
 const sourcePixels = await rawGreyscale(source);
 const outputPixels = await rawGreyscale(result.image);
 const mosaicPixels = await rawGreyscale(mosaicResult.image);
 const lowStrengthPixels = await rawGreyscale(lowStrengthResult.image);
 const perMaskOverridePixels = await rawGreyscale(perMaskOverrideResult.image);
+const edgeSourcePixels = await rawGreyscale(edgeSource);
+const edgeOutputPixels = await rawGreyscale(edgeResult.image);
 const innerRegion = { left: 330, top: 250, width: 300, height: 190 };
 const outsideRegion = { left: 20, top: 20, width: 160, height: 80 };
 const sourceInnerEdges = meanEdgeEnergy(sourcePixels, width, innerRegion);
@@ -113,6 +151,34 @@ const perMaskOverrideEdges = meanEdgeEnergy(
   width,
   innerRegion,
 );
+const physicalEdgeRegion = { left: 0, top: 70, width: 24, height: 100 };
+const sourcePhysicalEdgeEnergy = meanEdgeEnergy(
+  edgeSourcePixels,
+  edgeWidth,
+  physicalEdgeRegion,
+);
+const outputPhysicalEdgeEnergy = meanEdgeEnergy(
+  edgeOutputPixels,
+  edgeWidth,
+  physicalEdgeRegion,
+);
+const physicalEdgeDifference = meanAbsoluteDifference(
+  edgeSourcePixels,
+  edgeOutputPixels,
+  edgeWidth,
+  physicalEdgeRegion,
+);
+const physicalBottomRegion = { left: 45, top: 216, width: 100, height: 24 };
+const sourcePhysicalBottomEnergy = meanEdgeEnergy(
+  edgeSourcePixels,
+  edgeWidth,
+  physicalBottomRegion,
+);
+const outputPhysicalBottomEnergy = meanEdgeEnergy(
+  edgeOutputPixels,
+  edgeWidth,
+  physicalBottomRegion,
+);
 
 assert.ok(
   outputInnerEdges < sourceInnerEdges * 0.35,
@@ -142,6 +208,18 @@ assert.ok(
   perMaskOverrideEdges < lowStrengthEdges * 0.7,
   `Expected a per-mask strength override to blur more strongly; default=${lowStrengthEdges.toFixed(2)}, override=${perMaskOverrideEdges.toFixed(2)}`,
 );
+assert.ok(
+  outputPhysicalEdgeEnergy < sourcePhysicalEdgeEnergy * 0.25,
+  `Expected full-strength blur at the physical image edge; source=${sourcePhysicalEdgeEnergy.toFixed(2)}, output=${outputPhysicalEdgeEnergy.toFixed(2)}`,
+);
+assert.ok(
+  physicalEdgeDifference > 20,
+  `Expected material redaction through the physical image edge; mean difference=${physicalEdgeDifference.toFixed(2)}`,
+);
+assert.ok(
+  outputPhysicalBottomEnergy < sourcePhysicalBottomEnergy * 0.25,
+  `Expected full-strength blur at the bottom image edge; source=${sourcePhysicalBottomEnergy.toFixed(2)}, output=${outputPhysicalBottomEnergy.toFixed(2)}`,
+);
 
 console.log(
   JSON.stringify(
@@ -169,6 +247,15 @@ console.log(
         maskStrength: 12,
         defaultEdgeEnergy: Number(lowStrengthEdges.toFixed(2)),
         overrideEdgeEnergy: Number(perMaskOverrideEdges.toFixed(2)),
+      },
+      physicalImageEdge: {
+        detailRemainingPercent: Number(
+          ((outputPhysicalEdgeEnergy / sourcePhysicalEdgeEnergy) * 100).toFixed(1),
+        ),
+        meanDifference: Number(physicalEdgeDifference.toFixed(2)),
+        bottomDetailRemainingPercent: Number(
+          ((outputPhysicalBottomEnergy / sourcePhysicalBottomEnergy) * 100).toFixed(1),
+        ),
       },
     },
     null,

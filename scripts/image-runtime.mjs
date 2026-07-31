@@ -170,7 +170,13 @@ export async function redactImage(sourceBuffer, sourceName, options) {
           .png()
           .toBuffer();
       }
-      const polygonMask = polygonMaskSvg(mask.points, box, featherPixels);
+      const polygonMask = await polygonMaskPng(
+        mask.points,
+        box,
+        featherPixels,
+        info.width,
+        info.height,
+      );
       const patch = await sharp(redactedPatch)
         .composite([{ input: polygonMask, blend: "dest-in" }])
         .png()
@@ -1151,17 +1157,65 @@ function boundsForPoints(points) {
   };
 }
 
-function polygonMaskSvg(points, box, featherPixels) {
-  const polygon = points
-    .map((point) => `${point.x - box.left},${point.y - box.top}`)
+async function polygonMaskPng(
+  points,
+  box,
+  featherPixels,
+  imageWidth,
+  imageHeight,
+) {
+  // Feathering a polygon exactly at the image boundary normally fades its
+  // alpha toward transparent because half of the blur kernel lies outside the
+  // SVG viewport. Extend edge-touching corners beyond the source image so the
+  // mask remains fully opaque all the way to the physical image edge.
+  const edgeSupport = Math.ceil(featherPixels * 3 + 2);
+  const touchesPhysicalEdge = points.some(
+    (point) =>
+      point.x <= 0.5 ||
+      point.x >= imageWidth - 0.5 ||
+      point.y <= 0.5 ||
+      point.y >= imageHeight - 0.5,
+  );
+  const renderMargin = touchesPhysicalEdge ? edgeSupport * 2 : 0;
+  const edgeSafePoints = points.map((point) => ({
+    x:
+      point.x <= 0.5
+        ? point.x - edgeSupport
+        : point.x >= imageWidth - 0.5
+          ? point.x + edgeSupport
+          : point.x,
+    y:
+      point.y <= 0.5
+        ? point.y - edgeSupport
+        : point.y >= imageHeight - 0.5
+          ? point.y + edgeSupport
+          : point.y,
+  }));
+  const polygon = edgeSafePoints
+    .map(
+      (point) =>
+        `${point.x - box.left + renderMargin},${point.y - box.top + renderMargin}`,
+    )
     .join(" ");
   const filter = featherPixels > 0
-    ? `<defs><filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${featherPixels.toFixed(2)}"/></filter></defs>`
+    ? `<defs><filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${featherPixels.toFixed(2)}" edgeMode="duplicate"/></filter></defs>`
     : "";
   const filterAttribute = featherPixels > 0 ? ' filter="url(#f)"' : "";
-  return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${box.width}" height="${box.height}" viewBox="0 0 ${box.width} ${box.height}">${filter}<polygon points="${polygon}" fill="white"${filterAttribute}/></svg>`,
+  const renderWidth = box.width + renderMargin * 2;
+  const renderHeight = box.height + renderMargin * 2;
+  const svg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${renderWidth}" height="${renderHeight}" viewBox="0 0 ${renderWidth} ${renderHeight}">${filter}<polygon points="${polygon}" fill="white"${filterAttribute}/></svg>`,
   );
+  if (!renderMargin) return svg;
+  return sharp(svg)
+    .extract({
+      left: renderMargin,
+      top: renderMargin,
+      width: box.width,
+      height: box.height,
+    })
+    .png()
+    .toBuffer();
 }
 
 function clamp(value, min, max) {

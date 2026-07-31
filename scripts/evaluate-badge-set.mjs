@@ -19,17 +19,25 @@ import {
   CLASSIFIER_LABELS,
   CLASSIFIER_MODEL_ID,
   CLASSIFIER_POSITIVE_LABEL_COUNT,
+  CROPPED_FOREGROUND_CLASSIFIER_MARGIN,
+  CROPPED_FOREGROUND_MIN_SCORE,
   DEFAULT_FEATHER_PERCENT,
   DEFAULT_LABELS,
   DEFAULT_PADDING_PERCENT,
   DEFAULT_REDACTION_STYLE,
   DEFAULT_REDACTION_STRENGTH,
   DEFAULT_THRESHOLD,
+  EXTENDED_TORSO_CLASSIFIER_MARGIN,
+  EXTENDED_TORSO_MIN_SCORE,
+  GLOBAL_BADGE_MAX_AREA_RATIO,
   GLOBAL_CLASSIFIER_LABELS,
   GLOBAL_CLASSIFIER_MAX_SCORE,
   GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
   GLOBAL_CLASSIFIER_REJECT_MARGIN,
   MODEL_ID,
+  NO_PERSON_CLASSIFIER_MARGIN,
+  NO_PERSON_MIN_SCORE,
+  TORSO_BADGE_MAX_AREA_RATIO,
 } from "../src/detector-config.js";
 import {
   deduplicateBadgeDetections,
@@ -40,7 +48,10 @@ import {
   globalClassifierDecision,
 } from "../src/classifier-utils.js";
 import {
+  candidateLooksLikeCroppedForeground,
   candidateInsideTorso,
+  extendedTorsoRegionForPerson,
+  isPlausiblePersonBox,
   torsoRegionForPerson,
 } from "../src/person-guidance.js";
 
@@ -103,7 +114,7 @@ if (!skipRedaction) {
   await mkdir(redactedDirectory, { recursive: true });
   await mkdir(metadataDirectory, { recursive: true });
 }
-if (thorough || personGuided || torsoGuided) {
+if (thorough || personGuided || torsoGuided || globalClassifier) {
   await mkdir(tileDirectory, { recursive: true });
 }
 
@@ -207,7 +218,9 @@ for (let index = 0; index < imageNames.length; index += 1) {
       `${index}-${resultIndex}`,
     ),
   );
-  const unverifiedGlobalBoxes = filterBadgeDetections(candidates, decoded.info);
+  const unverifiedGlobalBoxes = filterBadgeDetections(candidates, decoded.info, {
+    maxAreaRatio: GLOBAL_BADGE_MAX_AREA_RATIO,
+  });
   const globalClassification = globalClassifier
     ? await classifyCandidates({
         classifier: rescueClassifier,
@@ -265,22 +278,57 @@ for (let index = 0; index < imageNames.length; index += 1) {
         rawDetectionCount: 0,
         passCount: 0,
         personRegions: [],
+        extendedPersonRegions: [],
         personCount: 0,
         contextRegion: null,
       };
-  const torsoGlobalBoxes = torsoGuided
-    ? globalBoxes.filter((box) =>
-        candidateInsideTorso(
-          box,
-          tileResults.personRegions.map((region) => ({
-            left: region.x,
-            top: region.y,
-            width: region.width,
-            height: region.height,
-          })),
-        ),
-      )
+  const torsoRegions = tileResults.personRegions.map(regionAsBounds);
+  const strictTorsoGlobalBoxes = torsoGuided
+    ? globalBoxes.filter((box) => candidateInsideTorso(box, torsoRegions))
     : globalBoxes;
+  const outsideTorsoGlobalBoxes = torsoGuided
+    ? globalBoxes.filter((box) => !candidateInsideTorso(box, torsoRegions))
+    : [];
+  const contextualGlobalBoxes = torsoGuided && outsideTorsoGlobalBoxes.length
+    ? (
+        await classifyCandidates({
+          classifier: rescueClassifier,
+          source,
+          imageName,
+          width: decoded.info.width,
+          height: decoded.info.height,
+          boxes: outsideTorsoGlobalBoxes.filter((box) =>
+            contextualRequirements(
+              box,
+              tileResults,
+              decoded.info.width,
+              decoded.info.height,
+            ),
+          ),
+          tileDirectory,
+          marginThreshold: Number.NEGATIVE_INFINITY,
+          maxScore: 1,
+          cropPrefix: "context-rescue-classifier",
+          labels: GLOBAL_CLASSIFIER_LABELS,
+          positiveLabelCount: GLOBAL_CLASSIFIER_POSITIVE_LABEL_COUNT,
+        })
+      ).retained.filter((box) => {
+        const requirements = contextualRequirements(
+          box,
+          tileResults,
+          decoded.info.width,
+          decoded.info.height,
+        );
+        return (
+          requirements &&
+          box.classifierMargin >= requirements.minimumClassifierMargin
+        );
+      })
+    : [];
+  const torsoGlobalBoxes = [
+    ...strictTorsoGlobalBoxes,
+    ...contextualGlobalBoxes,
+  ];
   const colorResults = personGuided || colorAssisted
     ? await detectColorBadgeCandidates(source, imageName)
     : { candidates: [] };
@@ -741,6 +789,43 @@ function boxCenter(box) {
   };
 }
 
+function regionAsBounds(region) {
+  return {
+    left: region.x,
+    top: region.y,
+    width: region.width,
+    height: region.height,
+  };
+}
+
+function contextualRequirements(box, tileResults, width, height) {
+  if (
+    candidateInsideTorso(
+      box,
+      tileResults.extendedPersonRegions.map(regionAsBounds),
+    ) &&
+    box.score >= EXTENDED_TORSO_MIN_SCORE
+  ) {
+    return {
+      minimumClassifierMargin: EXTENDED_TORSO_CLASSIFIER_MARGIN,
+    };
+  }
+  if (
+    candidateLooksLikeCroppedForeground(box, width, height) &&
+    box.score >= CROPPED_FOREGROUND_MIN_SCORE
+  ) {
+    return {
+      minimumClassifierMargin: CROPPED_FOREGROUND_CLASSIFIER_MARGIN,
+    };
+  }
+  if (tileResults.personCount === 0 && box.score >= NO_PERSON_MIN_SCORE) {
+    return {
+      minimumClassifierMargin: NO_PERSON_CLASSIFIER_MARGIN,
+    };
+  }
+  return null;
+}
+
 function mergeGlobalWithTorsoRescues(globalBoxes, torsoBoxes) {
   const retainedGlobal = deduplicateBadgeDetections(globalBoxes, 0.32);
   const rescues = deduplicateBadgeDetections(torsoBoxes, 0.32).filter(
@@ -869,19 +954,13 @@ async function detectGroundingDinoTorsoCrops({
         `torso-person-${index}`,
       ),
     )
-    .filter((box) => {
-      const areaRatio =
-        (box.width * box.height) /
-        (globalPreviewInfo.width * globalPreviewInfo.height);
-      const aspect = box.width / box.height;
-      return (
-        box.label === "person" &&
-        areaRatio >= 0.0025 &&
-        areaRatio <= 0.82 &&
-        aspect >= 0.14 &&
-        aspect <= 1.45
-      );
-    });
+    .filter((box) =>
+      isPlausiblePersonBox(
+        box,
+        globalPreviewInfo.width,
+        globalPreviewInfo.height,
+      ),
+    );
   const persons = genericNms(previewPersons, 0.52).slice(0, 24);
   const personScaleX = width / globalPreviewInfo.width;
   const personScaleY = height / globalPreviewInfo.height;
@@ -900,6 +979,26 @@ async function detectGroundingDinoTorsoCrops({
       );
     }),
   );
+  const extendedPersonRegions = deduplicateRegions(
+    persons.map((person) => {
+      const fullPerson = {
+        x: person.x * personScaleX,
+        y: person.y * personScaleY,
+        width: person.width * personScaleX,
+        height: person.height * personScaleY,
+      };
+      return boundedCrop(
+        extendedTorsoRegionForPerson(fullPerson, width, height),
+        width,
+        height,
+      );
+    }),
+  ).map((region) => ({
+    x: region.left,
+    y: region.top,
+    width: region.width,
+    height: region.height,
+  }));
   const collected = [];
   const personRegions = [];
   let rawDetectionCount = personOutput.length;
@@ -946,6 +1045,7 @@ async function detectGroundingDinoTorsoCrops({
         ),
       ),
       cropInfo,
+      { maxAreaRatio: TORSO_BADGE_MAX_AREA_RATIO },
     )
       .filter((box) => {
         const aspect = box.width / box.height;
@@ -957,7 +1057,7 @@ async function detectGroundingDinoTorsoCrops({
           aspect >= 0.3 &&
           aspect <= 2.2 &&
           areaRatio >= 0.00025 &&
-          areaRatio <= 0.035 &&
+          areaRatio <= TORSO_BADGE_MAX_AREA_RATIO &&
           centerX >= 0.1 &&
           centerX <= 0.9 &&
           centerY >= 0.16 &&
@@ -990,6 +1090,7 @@ async function detectGroundingDinoTorsoCrops({
     personCount: persons.length,
     faceCount: 0,
     personRegions,
+    extendedPersonRegions,
     contextRegion: unionRegion(cropRegions),
   };
 }

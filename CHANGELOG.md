@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.22.2 — 2026-07-31
+
+- Retain close-up people that fill as much as 98% of the frame so their badges
+  are not discarded merely because the former person-area ceiling was too low.
+- Add scale-aware, classifier-confirmed recovery for low-hanging torso badges,
+  edge-cropped foreground badges, and strong badge candidates when the person
+  pass fails, while preserving the tighter torso path for ordinary detections.
+- Raise the badge-area ceiling only inside the protected global/torso pipeline
+  so unusually large credentials reach contextual verification instead of
+  being removed before classification.
+- Render feathered masks with off-canvas support when they touch an image edge,
+  keeping blur fully opaque through the final row or column of source pixels.
+- Add close-person, large-badge, contextual-classifier, physical-edge blur, and
+  five-image production-path regressions with reviewed demo ground truth.
+- Publish these fixes through the main-branch source installer; packaged macOS
+  and Windows installers remain at 0.22.1 pending hands-on use of this build.
+
 ## 0.22.1 — 2026-07-27
 
 - Add explicit per-image re-export and a **Re-export changed** batch action
