@@ -447,6 +447,7 @@ function createMainWindow(url) {
           processingOverlay?.hidden === true &&
           processingReviewState.activeIndex === 0 &&
           processingReviewState.workflowStage === "review";
+        smoke.refreshLayouts();
         await wait(25);
         const batchStartCenter = mediaCenterMetrics(
           document.querySelector(".canvas-wrap"),
@@ -454,6 +455,7 @@ function createMainWindow(url) {
         );
         const photoCenteredAtBatchStart = batchStartCenter.centered;
         document.querySelector(".fit-view")?.click();
+        smoke.refreshLayouts();
         await wait(25);
         const fitCenter = mediaCenterMetrics(
           document.querySelector(".canvas-wrap"),

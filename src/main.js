@@ -437,6 +437,7 @@ if (new URLSearchParams(window.location.search).get("smoke") === "1") {
       showProcessingComplete("2 photos processed · 2 await review."),
     simulateBatchProcessing,
     previewStartGuidance,
+    refreshLayouts: refreshViewerLayouts,
     playConfetti: playExportConfetti,
   });
 }
