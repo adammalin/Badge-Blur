@@ -1,7 +1,7 @@
 {
   "name": "badge-blur",
   "productName": "Badge Blur",
-  "version": "0.22.3",
+  "version": "0.22.4",
   "private": true,
   "description": "Local-only desktop app for detecting and redacting identification badges.",
   "author": "UT-Battelle LLC",

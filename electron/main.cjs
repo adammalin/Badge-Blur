@@ -369,6 +369,32 @@ function createMainWindow(url) {
         const sourceCacheActive =
           cacheStatus.sourceCacheItems >= 2 &&
           cacheStatus.sourceCacheBytes > 0;
+        const reducedMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)"
+        ).matches;
+        const reviewGuidanceButton = document.querySelector(".review-image");
+        const reviewGuidedAction =
+          reviewGuidanceButton?.textContent.trim() ===
+            "Save, review & next →" &&
+          reviewGuidanceButton.classList.contains("is-guided-action") &&
+          (reducedMotion ||
+            getComputedStyle(reviewGuidanceButton).animationName !== "none");
+        const startGuidance = smoke.previewStartGuidance();
+        const startGuidedAction =
+          startGuidance.guided &&
+          (reducedMotion || startGuidance.animationName !== "none");
+        smoke.simulateBatchProcessing(true);
+        await wait(25);
+        const processingEdgeStyle = getComputedStyle(document.body, "::after");
+        const processingEdgeGuidance =
+          document.body.classList.contains("is-batch-processing") &&
+          processingEdgeStyle.position === "fixed" &&
+          processingEdgeStyle.pointerEvents === "none" &&
+          processingEdgeStyle.boxShadow !== "none" &&
+          (reducedMotion || processingEdgeStyle.animationName !== "none");
+        smoke.simulateBatchProcessing(false);
+        const processingEdgeClears =
+          !document.body.classList.contains("is-batch-processing");
         document
           .querySelector('[data-filmstrip-id^="image-1-"]')
           ?.click();
@@ -605,6 +631,10 @@ function createMainWindow(url) {
           ...result,
           reviewSmokeAvailable: true,
           sourceCacheActive,
+          reviewGuidedAction,
+          startGuidedAction,
+          processingEdgeGuidance,
+          processingEdgeClears,
           processingCompletionVisible,
           processingCompletionStartsReview,
           photoCenteredAtBatchStart,
@@ -680,6 +710,10 @@ function createMainWindow(url) {
         capabilities.viewportFitted &&
         capabilities.reviewSmokeAvailable &&
         capabilities.sourceCacheActive &&
+        capabilities.reviewGuidedAction &&
+        capabilities.startGuidedAction &&
+        capabilities.processingEdgeGuidance &&
+        capabilities.processingEdgeClears &&
         capabilities.processingCompletionVisible &&
         capabilities.processingCompletionStartsReview &&
         capabilities.photoCenteredAtBatchStart &&

@@ -132,6 +132,20 @@ body {
     color 180ms ease;
 }
 
+body.is-batch-processing::after {
+  content: "";
+  position: fixed;
+  z-index: 9200;
+  inset: 0;
+  border: 2px solid rgb(112 185 75 / 72%);
+  box-shadow:
+    inset 0 0 18px 3px rgb(112 185 75 / 34%),
+    inset 0 0 52px 10px rgb(37 124 61 / 18%),
+    0 0 22px rgb(112 185 75 / 22%);
+  pointer-events: none;
+  animation: processing-edge-pulse 2.25s ease-in-out infinite;
+}
+
 button,
 input,
 select {
@@ -767,6 +781,29 @@ output {
 
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
+}
+
+.button.is-guided-action:not(:disabled) {
+  border-color: color-mix(in srgb, var(--icon-leaf) 82%, white);
+  box-shadow:
+    0 0 0 3px rgb(112 185 75 / 16%),
+    0 9px 24px rgb(7 91 56 / 18%);
+  animation: guided-action-pulse 2.6s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+.review-image.is-guided-action:not(:disabled) {
+  background: color-mix(in srgb, var(--green-soft) 82%, var(--surface));
+  color: var(--green-dark);
+}
+
+.button.is-guided-action:hover:not(:disabled),
+.button.is-guided-action:focus-visible:not(:disabled) {
+  animation-play-state: paused;
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 5px rgb(112 185 75 / 22%),
+    0 11px 28px rgb(7 91 56 / 24%);
 }
 
 .button:disabled {
@@ -1847,6 +1884,50 @@ body.processing-complete-active {
   }
 }
 
+@keyframes processing-edge-pulse {
+  0%,
+  100% {
+    border-color: rgb(112 185 75 / 48%);
+    box-shadow:
+      inset 0 0 14px 2px rgb(112 185 75 / 24%),
+      inset 0 0 42px 8px rgb(37 124 61 / 12%),
+      0 0 16px rgb(112 185 75 / 14%);
+  }
+  50% {
+    border-color: rgb(112 185 75 / 88%);
+    box-shadow:
+      inset 0 0 24px 5px rgb(112 185 75 / 42%),
+      inset 0 0 62px 13px rgb(37 124 61 / 22%),
+      0 0 28px rgb(112 185 75 / 26%);
+  }
+}
+
+@keyframes guided-action-pulse {
+  0%,
+  64%,
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow:
+      0 0 0 3px rgb(112 185 75 / 14%),
+      0 8px 22px rgb(7 91 56 / 16%);
+  }
+  72% {
+    transform: translateY(-3px) scale(1.012);
+    box-shadow:
+      0 0 0 7px rgb(112 185 75 / 22%),
+      0 12px 30px rgb(7 91 56 / 24%);
+  }
+  79% {
+    transform: translateY(0) scale(1);
+  }
+  86% {
+    transform: translateY(-1.5px) scale(1.006);
+  }
+  93% {
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes processing-card-in {
   from {
     opacity: 0;
@@ -1929,6 +2010,11 @@ body.processing-complete-active {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body.is-batch-processing::after,
+  .button.is-guided-action:not(:disabled) {
+    animation: none;
+  }
+
   .processing-complete-overlay,
   .processing-complete-card,
   .processing-complete-check circle,

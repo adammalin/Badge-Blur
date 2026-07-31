@@ -109,7 +109,7 @@ import {
   steppedViewZoom,
 } from "./view-transform.js";
 
-const APP_VERSION = "0.22.3";
+const APP_VERSION = "0.22.4";
 const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -435,6 +435,8 @@ if (new URLSearchParams(window.location.search).get("smoke") === "1") {
     addManualMaskAndShowAfter,
     showProcessingComplete: () =>
       showProcessingComplete("2 photos processed · 2 await review."),
+    simulateBatchProcessing,
+    previewStartGuidance,
     playConfetti: playExportConfetti,
   });
 }
@@ -647,6 +649,29 @@ function simulateOtherImageProcessing(enabled) {
   return reviewSmokeState();
 }
 
+function simulateBatchProcessing(enabled) {
+  running = Boolean(enabled);
+  batchOperation = enabled ? "batch" : null;
+  updateButtons();
+  return reviewSmokeState();
+}
+
+function previewStartGuidance() {
+  const previousStage = document.body.dataset.workflowStage;
+  const previousDisabled = elements.runAllButton.disabled;
+  setWorkflowStage("setup", { focus: false });
+  elements.runAllButton.disabled = false;
+  updateGuidanceEffects();
+  const result = {
+    guided: elements.runAllButton.classList.contains("is-guided-action"),
+    animationName: getComputedStyle(elements.runAllButton).animationName,
+  };
+  elements.runAllButton.disabled = previousDisabled;
+  setWorkflowStage(previousStage, { focus: false });
+  updateGuidanceEffects();
+  return result;
+}
+
 async function addManualMaskAndShowAfter() {
   const item = items[activeIndex];
   if (!item) return reviewSmokeState();
@@ -796,6 +821,7 @@ function setWorkflowStage(stage, { focus = true } = {}) {
   elements.reviewSection.hidden = !review;
   elements.setupPanel.inert = review;
   elements.reviewSection.inert = !review;
+  updateGuidanceEffects();
   if (review) scheduleViewerLayoutRefresh();
   if (!focus) return;
   requestAnimationFrame(() => {
@@ -3336,13 +3362,20 @@ function updateCurrentImageReviewState(card, item, overrideMessage = null) {
   button.dataset.action = readyToExport ? "export" : "review";
   button.classList.toggle("secondary", !readyToExport);
   button.classList.toggle("review-export-ready", readyToExport);
+  const nextIndex = nextReviewIndex(items.indexOf(item));
   button.textContent = readyToExport
     ? "Export all →"
     : item.reviewConfirmed
     ? "Reviewed ✓"
-    : nextReviewIndex(items.indexOf(item)) !== items.indexOf(item)
+    : nextIndex !== items.indexOf(item)
       ? "Save, review & next →"
       : "Save & mark reviewed";
+  button.classList.toggle(
+    "is-guided-action",
+    !button.disabled &&
+      !item.reviewConfirmed &&
+      nextIndex !== items.indexOf(item),
+  );
   button.setAttribute("aria-pressed", String(item.reviewConfirmed));
   if (overrideMessage) {
     state.textContent = overrideMessage;
@@ -5205,6 +5238,18 @@ function updateReviewAssistance() {
       : "No obvious processing or mask issues were found";
 }
 
+function updateGuidanceEffects() {
+  document.body.classList.toggle(
+    "is-batch-processing",
+    running && batchOperation === "batch",
+  );
+  elements.runAllButton.classList.toggle(
+    "is-guided-action",
+    document.body.dataset.workflowStage === "setup" &&
+      !elements.runAllButton.disabled,
+  );
+}
+
 function updateButtons() {
   const hasProcessableItems = items.some((item) => !item.decodeError);
   const hasDetectedItems = items.some((item) => item.status === "detected");
@@ -5290,6 +5335,7 @@ function updateButtons() {
   ]) {
     control.disabled = batchLocked;
   }
+  updateGuidanceEffects();
   updateCarouselControls();
   updateReviewAssistance();
   if (items[activeIndex]) renderItemStatus(items[activeIndex]);

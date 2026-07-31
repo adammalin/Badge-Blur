@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.4 — 2026-07-31
+
+- Add a soft green edge-only pulse while batch detection is active, plus a
+  restrained glow and occasional bounce on the currently actionable **Start
+  batch** or **Save, review & next** control. Reduced-motion preferences keep
+  the guidance static.
+
 ## 0.22.3 — 2026-07-31
 
 - Open an existing export run directly in the native file browser even when

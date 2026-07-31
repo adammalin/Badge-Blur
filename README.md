@@ -97,7 +97,9 @@ verify it and obtain any missing small files.
    TIFF, or WebP. The default destination remains a new unique run folder
    nested under the source folder's `exports` directory.
 3. Wait for the bundled local models to load automatically.
-4. Choose **Start batch**.
+4. Choose **Start batch**. Once the folder, output format, and local models are
+   ready, a restrained green glow identifies it as the next action. During
+   batch detection, a soft pulsing glow remains only at the window edges.
 5. To stop claiming new images without losing progress, choose **Pause after
    active images**. Active images finish and save before the batch enters its
    paused state. Choose **Resume batch** to continue in the same run folder;
@@ -130,6 +132,7 @@ verify it and obtain any missing small files.
    Waiting, Processing, Saving, Saved/review pending, Reviewed, or Needs
    attention. Navigation and edits to completed images remain available while
    other images process; only an image currently being detected is read-only.
+   The next **Save, review & next** action receives the same subtle guidance.
 10. Drag over a missed badge to add a mask.
 11. Click a mask and drag its four corner handles to match badge perspective.
 12. With a badge mask selected, adjust **Selected badge blur** when that one

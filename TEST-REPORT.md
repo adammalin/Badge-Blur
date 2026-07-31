@@ -1,7 +1,7 @@
 # MVP demo test report
 
 Date: 2026-07-31
-Source candidate: `0.22.3`; locally qualified packaged Mac candidate: `0.22.1`;
+Source candidate: `0.22.4`; locally qualified packaged Mac candidate: `0.22.1`;
 Windows candidate pending matched-platform CI
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -516,6 +516,24 @@ c2efd15fe98c1e4936898fd3a5910e75c48256ecdc953ef23e2646da2f5b0705  Badge-Blur-Mac
 The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
+
+### Version 0.22.4 source-release qualification
+
+The local source candidate tested on 2026-07-31 passed:
+
+- all 25 deterministic tests, including export-folder run-ID verification,
+  local-only network enforcement, physical-edge redaction, per-mask strength,
+  and low-contrast/rotated corner fitting;
+- the production Vite build and complete Electron review smoke, including the
+  processing-only screen-edge pulse, actionable **Start batch** guidance,
+  actionable **Save, review & next** guidance, and removal of the edge effect
+  when processing finishes; and
+- static guidance with animation disabled when the operating system requests
+  reduced motion.
+
+This release changes only workflow guidance and does not alter detection,
+mask fitting, source images, or exported pixels. Packaged macOS and Windows
+installers remain at 0.22.1 and were not rebuilt.
 
 ### Version 0.22.3 source-release qualification
 
