@@ -28,6 +28,8 @@ const tests = [
   "scripts/test-export-state.mjs",
   "scripts/test-server-lifecycle.mjs",
   "scripts/test-release-metadata.mjs",
+  "scripts/test-onboarding-tour.mjs",
+  "scripts/test-onboarding-preferences.cjs",
 ];
 
 for (const test of tests) {

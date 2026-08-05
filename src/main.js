@@ -108,8 +108,16 @@ import {
   fittedImageSize,
   steppedViewZoom,
 } from "./view-transform.js";
+import {
+  ONBOARDING_TOUR_STEPS,
+  ONBOARDING_TOUR_STORAGE_KEY,
+  ONBOARDING_TOUR_VERSION,
+  clampTourStep,
+  shouldShowOnboardingTour,
+  tourCardPosition,
+} from "./onboarding-tour.js";
 
-const APP_VERSION = "0.22.4";
+const APP_VERSION = "0.22.5";
 const IMAGE_API_VERSION = 7;
 const SUPPORTED_EXTENSIONS = new Set([
   "jpg",
@@ -126,6 +134,8 @@ const CAROUSEL_RADIUS = 2;
 const PROJECT_CACHE_DOCUMENT_TYPE = "badge-blur-active-project";
 const PROJECT_CACHE_SCHEMA_VERSION = 1;
 const VIEW_SCALE_STORAGE_KEY = "badge-blur-view-scale";
+const SMOKE_MODE =
+  new URLSearchParams(window.location.search).get("smoke") === "1";
 const INFERENCE_THREADS_PER_WORKER = Math.max(
   1,
   Math.min(2, (navigator.hardwareConcurrency || 4) - 4),
@@ -189,6 +199,7 @@ const elements = {
   completionText: document.querySelector("#completionText"),
   openExportFolderButton: document.querySelector("#openExportFolderButton"),
   attentionQueueButton: document.querySelector("#attentionQueueButton"),
+  tutorialButton: document.querySelector("#tutorialButton"),
   themeToggleButton: document.querySelector("#themeToggleButton"),
   quitAppButton: document.querySelector("#quitAppButton"),
   quitDialog: document.querySelector("#quitDialog"),
@@ -201,6 +212,17 @@ const elements = {
   processingCompleteText: document.querySelector("#processingCompleteText"),
   reviewPhotosButton: document.querySelector("#reviewPhotosButton"),
   confettiOverlay: document.querySelector("#confettiOverlay"),
+  onboardingTour: document.querySelector("#onboardingTour"),
+  tourScrim: document.querySelector("#tourScrim"),
+  tourSpotlight: document.querySelector("#tourSpotlight"),
+  tourCard: document.querySelector("#tourCard"),
+  tourProgress: document.querySelector("#tourProgress"),
+  tourProgressDots: document.querySelector("#tourProgressDots"),
+  tourTitle: document.querySelector("#tourTitle"),
+  tourBody: document.querySelector("#tourBody"),
+  tourSkipButton: document.querySelector("#tourSkipButton"),
+  tourBackButton: document.querySelector("#tourBackButton"),
+  tourNextButton: document.querySelector("#tourNextButton"),
 };
 
 let modelWorkers = [];
@@ -238,6 +260,14 @@ let restoringCachedProject = false;
 let projectCacheTimer = null;
 let defaultViewScaleMode = readViewScaleMode();
 let spacePanning = false;
+let onboardingTourActive = false;
+let onboardingTourStepIndex = 0;
+let onboardingTourOriginalStage = "setup";
+let onboardingTourReturnFocus = null;
+let onboardingTourPositionFrame = null;
+let onboardingTourSettleTimer = null;
+let firstRunTourChecked = false;
+let storedOnboardingTourVersion = null;
 const sourceRegistrationState = new WeakMap();
 
 elements.thresholdInput.addEventListener("input", () => {
@@ -311,6 +341,9 @@ elements.reviewPhotosButton.addEventListener("click", () => {
 elements.attentionQueueButton.addEventListener("click", () => {
   void goToNextAttentionItem();
 });
+elements.tutorialButton.addEventListener("click", () => {
+  startOnboardingTour({ replay: true });
+});
 elements.themeToggleButton.addEventListener("click", toggleTheme);
 elements.changeExportButton.addEventListener("click", chooseCustomExportFolder);
 elements.resetExportButton.addEventListener("click", useSourceExportFolder);
@@ -322,10 +355,31 @@ elements.runManifestInput.addEventListener("change", importPreviousRun);
 elements.previousPageButton.addEventListener("click", () => changeCarousel(-1));
 elements.nextPageButton.addEventListener("click", () => changeCarousel(1));
 elements.quitAppButton.addEventListener("click", quitBadgeBlur);
+elements.tourSkipButton.addEventListener("click", () => {
+  void closeOnboardingTour({ remember: true });
+});
+elements.tourBackButton.addEventListener("click", () => {
+  showOnboardingTourStep(onboardingTourStepIndex - 1);
+});
+elements.tourNextButton.addEventListener("click", () => {
+  if (onboardingTourStepIndex >= ONBOARDING_TOUR_STEPS.length - 1) {
+    void closeOnboardingTour({ remember: true });
+  } else {
+    showOnboardingTourStep(onboardingTourStepIndex + 1);
+  }
+});
+elements.onboardingTour.addEventListener(
+  "wheel",
+  (event) => {
+    if (onboardingTourActive) event.preventDefault();
+  },
+  { passive: false },
+);
 window.__badgeBlurPrepareToQuit = prepareForQuit;
 if (typeof window.showDirectoryPicker !== "function") {
   elements.exportCompatibility.hidden = false;
 }
+document.addEventListener("keydown", handleOnboardingTourKeydown, true);
 document.addEventListener("keydown", (event) => {
   if (
     event.target instanceof HTMLInputElement ||
@@ -426,8 +480,9 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("resize", () => {
   requestAnimationFrame(refreshViewerLayouts);
+  if (onboardingTourActive) scheduleOnboardingTourPosition();
 });
-if (new URLSearchParams(window.location.search).get("smoke") === "1") {
+if (SMOKE_MODE) {
   window.__badgeBlurReviewSmoke = Object.freeze({
     loadFixture: loadReviewSmokeFixture,
     state: reviewSmokeState,
@@ -439,6 +494,13 @@ if (new URLSearchParams(window.location.search).get("smoke") === "1") {
     previewStartGuidance,
     refreshLayouts: refreshViewerLayouts,
     playConfetti: playExportConfetti,
+    startTour: () => startOnboardingTour({ replay: true }),
+    nextTour: () =>
+      showOnboardingTourStep(onboardingTourStepIndex + 1),
+    closeTour: (remember = true) =>
+      closeOnboardingTour({ remember: Boolean(remember) }),
+    tourState: onboardingTourState,
+    storedTourVersion: readStoredOnboardingTourVersion,
   });
 }
 initializeTheme();
@@ -482,6 +544,245 @@ function applyTheme(theme) {
   const label = dark ? "Use light mode" : "Use dark mode";
   elements.themeToggleButton.setAttribute("aria-label", label);
   elements.themeToggleButton.title = label;
+}
+
+async function maybeStartFirstRunTour() {
+  if (firstRunTourChecked || SMOKE_MODE) return false;
+  firstRunTourChecked = true;
+  const storedVersion = await readStoredOnboardingTourVersion();
+  if (!shouldShowOnboardingTour(storedVersion) || running) return false;
+  return startOnboardingTour();
+}
+
+function startOnboardingTour({ replay = false } = {}) {
+  if (onboardingTourActive || running) return false;
+  firstRunTourChecked = true;
+  onboardingTourActive = true;
+  onboardingTourStepIndex = 0;
+  onboardingTourOriginalStage =
+    document.body.dataset.workflowStage === "review" ? "review" : "setup";
+  onboardingTourReturnFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  elements.onboardingTour.hidden = false;
+  elements.onboardingTour.dataset.replay = String(Boolean(replay));
+  document.body.classList.add("onboarding-tour-active");
+  showOnboardingTourStep(0);
+  return true;
+}
+
+function showOnboardingTourStep(index) {
+  if (!onboardingTourActive) return false;
+  onboardingTourStepIndex = clampTourStep(index);
+  const step = ONBOARDING_TOUR_STEPS[onboardingTourStepIndex];
+  if (step.stage) setWorkflowStage(step.stage, { focus: false });
+
+  const stepNumber = onboardingTourStepIndex + 1;
+  elements.tourProgress.textContent =
+    `Step ${stepNumber} of ${ONBOARDING_TOUR_STEPS.length}`;
+  elements.tourTitle.textContent = step.title;
+  elements.tourBody.textContent = step.body;
+  elements.tourBackButton.disabled = onboardingTourStepIndex === 0;
+  elements.tourNextButton.textContent =
+    onboardingTourStepIndex === ONBOARDING_TOUR_STEPS.length - 1
+      ? "Done"
+      : "Next →";
+  elements.tourProgressDots.replaceChildren(
+    ...ONBOARDING_TOUR_STEPS.map((_candidate, dotIndex) => {
+      const dot = document.createElement("i");
+      dot.classList.toggle("is-complete", dotIndex < onboardingTourStepIndex);
+      dot.classList.toggle("is-current", dotIndex === onboardingTourStepIndex);
+      return dot;
+    }),
+  );
+  elements.tourCard.style.visibility = "hidden";
+  scheduleOnboardingTourPosition();
+  clearTimeout(onboardingTourSettleTimer);
+  onboardingTourSettleTimer = setTimeout(() => {
+    scheduleOnboardingTourPosition();
+  }, 220);
+  return true;
+}
+
+function scheduleOnboardingTourPosition() {
+  if (!onboardingTourActive) return;
+  if (onboardingTourPositionFrame) {
+    cancelAnimationFrame(onboardingTourPositionFrame);
+  }
+  onboardingTourPositionFrame = requestAnimationFrame(() => {
+    const step = ONBOARDING_TOUR_STEPS[onboardingTourStepIndex];
+    const target = visibleTourTarget(step.selector);
+    target?.scrollIntoView({ block: "center", inline: "nearest" });
+    onboardingTourPositionFrame = requestAnimationFrame(() => {
+      positionOnboardingTour(target);
+      onboardingTourPositionFrame = null;
+    });
+  });
+}
+
+function visibleTourTarget(selector) {
+  if (!selector) return null;
+  const target = document.querySelector(selector);
+  if (!(target instanceof HTMLElement) || target.getClientRects().length === 0) {
+    return null;
+  }
+  const style = getComputedStyle(target);
+  if (style.display === "none" || style.visibility === "hidden") return null;
+  return target;
+}
+
+function positionOnboardingTour(target) {
+  if (!onboardingTourActive) return;
+  const targetRect = target?.getBoundingClientRect() || null;
+  elements.onboardingTour.classList.toggle("is-centered", !targetRect);
+
+  if (targetRect) {
+    const padding = 8;
+    const left = Math.max(6, targetRect.left - padding);
+    const top = Math.max(6, targetRect.top - padding);
+    const right = Math.min(window.innerWidth - 6, targetRect.right + padding);
+    const bottom = Math.min(window.innerHeight - 6, targetRect.bottom + padding);
+    elements.tourSpotlight.style.left = `${left}px`;
+    elements.tourSpotlight.style.top = `${top}px`;
+    elements.tourSpotlight.style.width = `${Math.max(0, right - left)}px`;
+    elements.tourSpotlight.style.height = `${Math.max(0, bottom - top)}px`;
+    elements.tourSpotlight.style.borderRadius =
+      getComputedStyle(target).borderRadius || "var(--ornl-radius)";
+  }
+
+  const cardRect = elements.tourCard.getBoundingClientRect();
+  const cardPosition = tourCardPosition(
+    targetRect,
+    { width: cardRect.width, height: cardRect.height },
+    { width: window.innerWidth, height: window.innerHeight },
+  );
+  elements.tourCard.dataset.placement = cardPosition.placement;
+  elements.tourCard.style.left = `${cardPosition.left}px`;
+  elements.tourCard.style.top = `${cardPosition.top}px`;
+  elements.tourCard.style.visibility = "visible";
+  elements.tourCard.focus({ preventScroll: true });
+}
+
+async function closeOnboardingTour({ remember = true } = {}) {
+  if (!onboardingTourActive) return false;
+  onboardingTourActive = false;
+  if (onboardingTourPositionFrame) {
+    cancelAnimationFrame(onboardingTourPositionFrame);
+    onboardingTourPositionFrame = null;
+  }
+  clearTimeout(onboardingTourSettleTimer);
+  onboardingTourSettleTimer = null;
+  elements.onboardingTour.hidden = true;
+  elements.onboardingTour.classList.remove("is-centered");
+  document.body.classList.remove("onboarding-tour-active");
+  setWorkflowStage(onboardingTourOriginalStage, { focus: false });
+  if (remember) await writeStoredOnboardingTourVersion();
+  const returnFocus = onboardingTourReturnFocus;
+  onboardingTourReturnFocus = null;
+  requestAnimationFrame(() => {
+    if (returnFocus?.isConnected && !returnFocus.disabled) {
+      returnFocus.focus({ preventScroll: true });
+    } else {
+      elements.tutorialButton.focus({ preventScroll: true });
+    }
+  });
+  return true;
+}
+
+function handleOnboardingTourKeydown(event) {
+  if (!onboardingTourActive) return;
+  event.stopImmediatePropagation();
+  if (event.key === "Escape") {
+    event.preventDefault();
+    void closeOnboardingTour({ remember: true });
+    return;
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    elements.tourNextButton.click();
+    return;
+  }
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    if (!elements.tourBackButton.disabled) elements.tourBackButton.click();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const controls = [
+    elements.tourSkipButton,
+    elements.tourBackButton,
+    elements.tourNextButton,
+  ].filter((control) => !control.disabled);
+  if (controls.length === 0) return;
+  const currentIndex = controls.indexOf(document.activeElement);
+  const nextIndex = event.shiftKey
+    ? currentIndex <= 0
+      ? controls.length - 1
+      : currentIndex - 1
+    : currentIndex < 0 || currentIndex === controls.length - 1
+      ? 0
+      : currentIndex + 1;
+  event.preventDefault();
+  controls[nextIndex].focus();
+}
+
+function onboardingTourState() {
+  const step = ONBOARDING_TOUR_STEPS[onboardingTourStepIndex] || null;
+  return {
+    active: onboardingTourActive,
+    stepIndex: onboardingTourStepIndex,
+    stepId: step?.id || null,
+    stepCount: ONBOARDING_TOUR_STEPS.length,
+    title: elements.tourTitle.textContent,
+    nextText: elements.tourNextButton.textContent,
+    targetSelector: step?.selector || null,
+    targetVisible: Boolean(visibleTourTarget(step?.selector)),
+    storedVersion: storedOnboardingTourVersion,
+    workflowStage: document.body.dataset.workflowStage,
+  };
+}
+
+async function readStoredOnboardingTourVersion() {
+  try {
+    if (window.badgeBlurDesktop?.getOnboardingTourVersion) {
+      storedOnboardingTourVersion =
+        await window.badgeBlurDesktop.getOnboardingTourVersion();
+      if (storedOnboardingTourVersion) return storedOnboardingTourVersion;
+    }
+  } catch (error) {
+    console.warn("Badge Blur could not read its desktop tutorial preference.", error);
+  }
+  try {
+    storedOnboardingTourVersion = localStorage.getItem(
+      ONBOARDING_TOUR_STORAGE_KEY,
+    );
+  } catch {
+    storedOnboardingTourVersion = null;
+  }
+  return storedOnboardingTourVersion;
+}
+
+async function writeStoredOnboardingTourVersion() {
+  storedOnboardingTourVersion = ONBOARDING_TOUR_VERSION;
+  try {
+    if (window.badgeBlurDesktop?.setOnboardingTourVersion) {
+      await window.badgeBlurDesktop.setOnboardingTourVersion(
+        ONBOARDING_TOUR_VERSION,
+      );
+    }
+  } catch (error) {
+    console.warn("Badge Blur could not save its desktop tutorial preference.", error);
+  }
+  try {
+    localStorage.setItem(
+      ONBOARDING_TOUR_STORAGE_KEY,
+      ONBOARDING_TOUR_VERSION,
+    );
+  } catch {
+    // The desktop preference is authoritative when browser storage is unavailable.
+  }
+  return storedOnboardingTourVersion;
 }
 
 function readViewScaleMode() {
@@ -858,6 +1159,7 @@ async function verifyLocalServer() {
     updateButtons();
     await loadModel();
     await restoreCachedProject();
+    await maybeStartFirstRunTour();
   } catch (error) {
     console.error("Local server compatibility check failed.", error);
     serverReady = false;
@@ -5315,6 +5617,7 @@ function updateButtons() {
   elements.resetExportButton.disabled = !serverReady || batchLocked;
   elements.importRunButton.disabled = !serverReady || batchLocked;
   elements.backToSetupButton.disabled = running;
+  elements.tutorialButton.disabled = running;
   elements.quitAppButton.disabled = !serverReady || !lifecycleToken;
   elements.openExportFolderButton.disabled =
     !activeRun ||

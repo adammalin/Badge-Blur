@@ -91,6 +91,12 @@ verify it and obtain any missing small files.
 
 ## Workflow
 
+On the first successful desktop launch, Badge Blur opens a nine-step
+interactive tour over the real interface. Completing or skipping it is
+remembered in the app's private local preferences. Choose **Tutorial** in the
+upper-right corner to replay it at any time; the walkthrough restores the
+setup or review screen that was open when it started.
+
 1. Select a folder of JPEG, PNG, 8-bit single-page TIFF, WebP, AVIF, or
    HEIC/HEIF images.
 2. Choose the output format for this batch: match each source, JPEG, PNG,
@@ -175,7 +181,8 @@ native path. The Start/Pause/Export controls and live progress remain attached
 to the bottom of the window while you scroll. Elapsed processing time is
 right-aligned beside the finished, active, and worker counts below the
 progress bar, then remains visible as the final total. The header's
-half-circle control switches between light and dark themes.
+half-circle control switches between light and dark themes, and the adjacent
+**Tutorial** control reopens the interactive walkthrough.
 
 The default redaction is a smooth Gaussian blur sized to 3% of the badge's
 shorter edge. The Advanced settings panel can increase or decrease that

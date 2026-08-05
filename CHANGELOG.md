@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.22.5 — 2026-08-05
+
+- Add a nine-step interactive first-run tutorial over the actual Badge Blur
+  controls, covering folder selection, output format, batch processing,
+  reviewing, attention guidance, and export.
+- Add a persistent **Tutorial** control so the walkthrough can be replayed at
+  any time. Completion is stored privately in the desktop app's local user
+  data, with browser storage as a web-development fallback.
+- Keep tutorial spotlights aligned after layout and stage transitions, restore
+  the user's original workflow stage on exit, trap keyboard focus inside the
+  walkthrough, and respect reduced-motion and small-screen layouts.
+- Publish this as a main-branch source release for the macOS install/update
+  script. Existing packaged Mac and Windows installers remain at 0.22.4.
+
 ## 0.22.4 — 2026-07-31
 
 - Add a soft green edge-only pulse while batch detection is active, plus a

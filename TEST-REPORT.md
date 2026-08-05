@@ -1,7 +1,7 @@
 # MVP demo test report
 
-Date: 2026-07-31
-Source candidate: `0.22.4`; qualified packaged Mac and Windows candidates:
+Date: 2026-08-05
+Source candidate: `0.22.5`; qualified packaged Mac and Windows candidates:
 `0.22.4`
 Model: `onnx-community/grounding-dino-tiny-ONNX` quantized ONNX
 Model revision: `ff690b0a8050566c290287545bd059350f3e9096`
@@ -516,6 +516,24 @@ c2efd15fe98c1e4936898fd3a5910e75c48256ecdc953ef23e2646da2f5b0705  Badge-Blur-Mac
 The Windows x64 candidate remains pending the matched-platform release CI job.
 
 ## Qualification status
+
+### Version 0.22.5 source-release qualification
+
+The local source candidate tested on 2026-08-05 passed:
+
+- all 28 deterministic tests, including private tutorial-preference storage,
+  walkthrough navigation and placement helpers, and the existing detection,
+  redaction, export, lifecycle, and local-only security checks;
+- the production Vite build and complete Electron review smoke, including
+  first-run tutorial readiness, replay after completion, keyboard navigation,
+  and restoration of the original workflow stage; and
+- layout verification for all nine tutorial steps, with every referenced
+  control visible, every spotlight aligned to its control, and every tutorial
+  card contained inside the viewport.
+
+This is a main-branch source release for the macOS install/update script.
+Packaged Mac and Windows installers remain at the independently qualified
+0.22.4 release; no 0.22.5 installer was produced.
 
 ### Version 0.22.4 installer-release qualification
 

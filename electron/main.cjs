@@ -17,6 +17,10 @@ const {
 } = require("./export-folder.cjs");
 const { recoverManifestSource } = require("./manifest-source.cjs");
 const {
+  readOnboardingTourVersion,
+  writeOnboardingTourVersion,
+} = require("./onboarding-preferences.cjs");
+const {
   installLocalOnlyNetworkPolicy,
 } = require("./network-policy.cjs");
 
@@ -72,6 +76,29 @@ ipcMain.handle("badge-blur:open-export-folder", async (_event, request) => {
   if (error) throw new Error(error);
   return true;
 });
+
+ipcMain.handle("badge-blur:get-onboarding-tour-version", async (event) => {
+  assertTrustedRenderer(event);
+  return readOnboardingTourVersion(app.getPath("userData"));
+});
+
+ipcMain.handle(
+  "badge-blur:set-onboarding-tour-version",
+  async (event, version) => {
+    assertTrustedRenderer(event);
+    return writeOnboardingTourVersion(app.getPath("userData"), version);
+  },
+);
+
+function assertTrustedRenderer(event) {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    event?.sender?.id !== mainWindow.webContents.id
+  ) {
+    throw new Error("The Badge Blur preference request was not authorized.");
+  }
+}
 
 function resolveMacExportFolder(request) {
   if (!RUN_FOLDER_PATTERN.test(String(request?.runFolderName || ""))) {
@@ -388,6 +415,79 @@ function createMainWindow(url) {
 
         const smoke = window.__badgeBlurReviewSmoke;
         if (!smoke) return { ...result, reviewSmokeAvailable: false };
+        const tutorialButton = document.querySelector("#tutorialButton");
+        const tutorialReplayControl =
+          tutorialButton?.textContent.trim() === "Tutorial" &&
+          tutorialButton.hidden === false;
+        const tourStarted = smoke.startTour();
+        const tourCard = document.querySelector("#tourCard");
+        const tourSpotlight = document.querySelector("#tourSpotlight");
+        const tourStepLayouts = [];
+        for (
+          let stepIndex = 0;
+          stepIndex < smoke.tourState().stepCount;
+          stepIndex += 1
+        ) {
+          await wait(520);
+          const state = smoke.tourState();
+          const target = document.querySelector(state.targetSelector);
+          const targetRect = target?.getBoundingClientRect();
+          const spotlightRect = tourSpotlight?.getBoundingClientRect();
+          const cardRect = tourCard?.getBoundingClientRect();
+          const spotlightAligned =
+            targetRect &&
+            Math.abs(spotlightRect.left - Math.max(6, targetRect.left - 8)) <= 2 &&
+            Math.abs(spotlightRect.top - Math.max(6, targetRect.top - 8)) <= 2 &&
+            spotlightRect.width >= Math.min(targetRect.width, innerWidth - 12) &&
+            spotlightRect.height >= Math.min(targetRect.height, innerHeight - 12);
+          tourStepLayouts.push({
+            id: state.stepId,
+            targetVisible: state.targetVisible,
+            spotlightAligned: Boolean(spotlightAligned),
+            alignmentDelta: targetRect
+              ? {
+                  left: Number((spotlightRect.left - Math.max(6, targetRect.left - 8)).toFixed(2)),
+                  top: Number((spotlightRect.top - Math.max(6, targetRect.top - 8)).toFixed(2)),
+                  width: Number((spotlightRect.width - targetRect.width).toFixed(2)),
+                  height: Number((spotlightRect.height - targetRect.height).toFixed(2)),
+                }
+              : null,
+            cardWithinViewport:
+              cardRect?.left >= 0 &&
+              cardRect?.top >= 0 &&
+              cardRect?.right <= innerWidth + 1 &&
+              cardRect?.bottom <= innerHeight + 1,
+          });
+          if (stepIndex < state.stepCount - 1) smoke.nextTour();
+        }
+        const firstTourState = tourStepLayouts.at(0);
+        const secondTourState = tourStepLayouts.at(1);
+        await smoke.closeTour(true);
+        const rememberedTourVersion = await smoke.storedTourVersion();
+        const closedTourState = smoke.tourState();
+        const replayStarted = smoke.startTour();
+        await wait(25);
+        await smoke.closeTour(false);
+        const firstRunTourReady =
+          tourStarted === true &&
+          firstTourState.id === "welcome" &&
+          firstTourState.targetVisible === true &&
+          secondTourState.id === "source" &&
+          secondTourState.targetVisible === true &&
+          tourStepLayouts.length >= 8 &&
+          tourStepLayouts.every(
+            (layout) =>
+              layout.targetVisible &&
+              layout.spotlightAligned &&
+              layout.cardWithinViewport
+          ) &&
+          closedTourState.active === false &&
+          closedTourState.workflowStage === "setup" &&
+          rememberedTourVersion === "1";
+        const tutorialReplayReady =
+          tutorialReplayControl &&
+          replayStarted === true &&
+          smoke.tourState().active === false;
         await smoke.loadFixture();
         const cacheStatus = await fetch("/api/status", {
           cache: "no-store",
@@ -640,6 +740,9 @@ function createMainWindow(url) {
         return {
           ...result,
           reviewSmokeAvailable: true,
+          firstRunTourReady,
+          tutorialReplayReady,
+          tourStepLayouts,
           sourceCacheActive,
           reviewGuidedAction,
           startGuidedAction,
@@ -721,6 +824,8 @@ function createMainWindow(url) {
         capabilities.setupStageOnly &&
         capabilities.viewportFitted &&
         capabilities.reviewSmokeAvailable &&
+        capabilities.firstRunTourReady &&
+        capabilities.tutorialReplayReady &&
         capabilities.sourceCacheActive &&
         capabilities.reviewGuidedAction &&
         capabilities.startGuidedAction &&

@@ -281,6 +281,31 @@ h3 {
   place-items: center;
 }
 
+.header-actions > .tutorial-button {
+  display: inline-flex;
+  width: auto;
+  min-width: 44px;
+  padding: 0 0.85rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.tutorial-button svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.tutorial-button span {
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .quit-app-button {
   display: inline-flex;
   width: 44px;
@@ -1767,6 +1792,173 @@ body.processing-complete-active {
   overflow: hidden;
 }
 
+.onboarding-tour {
+  position: fixed;
+  z-index: 11000;
+  inset: 0;
+  pointer-events: none;
+}
+
+.onboarding-tour[hidden] {
+  display: none;
+}
+
+.tour-scrim {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+  overscroll-behavior: contain;
+  transition: background-color 180ms ease;
+}
+
+.onboarding-tour.is-centered .tour-scrim {
+  background: rgb(20 30 25 / 74%);
+  backdrop-filter: blur(3px);
+}
+
+.tour-spotlight {
+  position: fixed;
+  z-index: 1;
+  border: 2px solid var(--icon-leaf);
+  border-radius: calc(var(--ornl-radius) + 4px);
+  background: transparent;
+  box-shadow:
+    0 0 0 5px rgb(112 185 75 / 22%),
+    0 0 0 9999px rgb(20 30 25 / 72%),
+    0 12px 36px rgb(0 28 14 / 28%);
+  pointer-events: none;
+  transition:
+    inset 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 180ms ease;
+}
+
+.onboarding-tour.is-centered .tour-spotlight {
+  display: none;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 2;
+  width: min(27rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: clamp(1.15rem, 3vw, 1.55rem);
+  border: 1px solid color-mix(in srgb, var(--line) 74%, var(--icon-leaf));
+  border-radius: calc(var(--app-radius-large) + 2px);
+  background:
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--surface) 94%, var(--green-soft)),
+      var(--surface)
+    );
+  color: var(--ink);
+  box-shadow: 0 26px 80px rgb(0 28 14 / 34%);
+  pointer-events: auto;
+  animation: tour-card-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.tour-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--icon-leaf) 72%, transparent);
+  outline-offset: 3px;
+}
+
+.tour-card-heading,
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.tour-progress {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tour-skip-button {
+  min-height: 32px;
+  padding: 0.3rem 0.45rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.tour-skip-button:hover,
+.tour-skip-button:focus-visible {
+  color: var(--green-dark);
+}
+
+.tour-progress-dots {
+  display: flex;
+  gap: 0.32rem;
+  margin: 0.85rem 0 1.15rem;
+}
+
+.tour-progress-dots i {
+  width: 100%;
+  max-width: 2rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.tour-progress-dots i.is-complete,
+.tour-progress-dots i.is-current {
+  background: var(--green);
+}
+
+.tour-progress-dots i.is-current {
+  box-shadow: 0 0 0 3px rgb(112 185 75 / 16%);
+}
+
+.tour-copy h2 {
+  margin: 0;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  line-height: 1.05;
+}
+
+.tour-copy p {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  line-height: 1.58;
+}
+
+.tour-actions {
+  margin-top: 1.4rem;
+}
+
+.tour-actions .button {
+  min-width: 7.5rem;
+}
+
+.tour-actions .button:last-child {
+  margin-left: auto;
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.45rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .processing-complete-overlay {
   position: fixed;
   z-index: 9500;
@@ -2018,8 +2210,14 @@ body.processing-complete-active {
   .processing-complete-overlay,
   .processing-complete-card,
   .processing-complete-check circle,
-  .processing-complete-check path {
+  .processing-complete-check path,
+  .tour-card {
     animation: none;
+  }
+
+  .tour-spotlight,
+  .tour-scrim {
+    transition: none;
   }
 
   .processing-complete-check circle,
@@ -2365,6 +2563,11 @@ footer p {
 
   .header-actions {
     justify-content: flex-start;
+  }
+
+  .tour-card {
+    width: calc(100vw - 1.25rem);
+    max-height: calc(100dvh - 1.25rem);
   }
 
   .control-grid,
