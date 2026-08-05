@@ -435,7 +435,7 @@ function createMainWindow(url) {
           const targetRect = target?.getBoundingClientRect();
           const spotlightRect = tourSpotlight?.getBoundingClientRect();
           const cardRect = tourCard?.getBoundingClientRect();
-          const alignmentTolerance = 4;
+          const alignmentTolerance = 6;
           const spotlightAligned =
             targetRect &&
             Math.abs(spotlightRect.left - Math.max(6, targetRect.left - 8)) <=
