@@ -435,10 +435,13 @@ function createMainWindow(url) {
           const targetRect = target?.getBoundingClientRect();
           const spotlightRect = tourSpotlight?.getBoundingClientRect();
           const cardRect = tourCard?.getBoundingClientRect();
+          const alignmentTolerance = 4;
           const spotlightAligned =
             targetRect &&
-            Math.abs(spotlightRect.left - Math.max(6, targetRect.left - 8)) <= 2 &&
-            Math.abs(spotlightRect.top - Math.max(6, targetRect.top - 8)) <= 2 &&
+            Math.abs(spotlightRect.left - Math.max(6, targetRect.left - 8)) <=
+              alignmentTolerance &&
+            Math.abs(spotlightRect.top - Math.max(6, targetRect.top - 8)) <=
+              alignmentTolerance &&
             spotlightRect.width >= Math.min(targetRect.width, innerWidth - 12) &&
             spotlightRect.height >= Math.min(targetRect.height, innerHeight - 12);
           tourStepLayouts.push({
