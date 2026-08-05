@@ -600,23 +600,33 @@ function showOnboardingTourStep(index) {
   scheduleOnboardingTourPosition();
   clearTimeout(onboardingTourSettleTimer);
   onboardingTourSettleTimer = setTimeout(() => {
-    scheduleOnboardingTourPosition();
-  }, 220);
+    scheduleOnboardingTourPosition({ immediate: true });
+  }, 320);
   return true;
 }
 
-function scheduleOnboardingTourPosition() {
+function scheduleOnboardingTourPosition({ immediate = false } = {}) {
   if (!onboardingTourActive) return;
   if (onboardingTourPositionFrame) {
     cancelAnimationFrame(onboardingTourPositionFrame);
   }
+  elements.onboardingTour.classList.toggle("is-position-snap", immediate);
   onboardingTourPositionFrame = requestAnimationFrame(() => {
     const step = ONBOARDING_TOUR_STEPS[onboardingTourStepIndex];
     const target = visibleTourTarget(step.selector);
-    target?.scrollIntoView({ block: "center", inline: "nearest" });
+    target?.scrollIntoView({
+      behavior: "instant",
+      block: "center",
+      inline: "nearest",
+    });
     onboardingTourPositionFrame = requestAnimationFrame(() => {
       positionOnboardingTour(target);
       onboardingTourPositionFrame = null;
+      if (immediate) {
+        requestAnimationFrame(() => {
+          elements.onboardingTour.classList.remove("is-position-snap");
+        });
+      }
     });
   });
 }
@@ -674,7 +684,7 @@ async function closeOnboardingTour({ remember = true } = {}) {
   clearTimeout(onboardingTourSettleTimer);
   onboardingTourSettleTimer = null;
   elements.onboardingTour.hidden = true;
-  elements.onboardingTour.classList.remove("is-centered");
+  elements.onboardingTour.classList.remove("is-centered", "is-position-snap");
   document.body.classList.remove("onboarding-tour-active");
   setWorkflowStage(onboardingTourOriginalStage, { focus: false });
   if (remember) await writeStoredOnboardingTourVersion();

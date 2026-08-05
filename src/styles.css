@@ -1840,6 +1840,10 @@ body.processing-complete-active {
   display: none;
 }
 
+.onboarding-tour.is-position-snap .tour-spotlight {
+  transition: none;
+}
+
 .tour-card {
   position: fixed;
   z-index: 2;
