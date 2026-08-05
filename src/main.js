@@ -597,6 +597,9 @@ function showOnboardingTourStep(index) {
     }),
   );
   elements.tourCard.style.visibility = "hidden";
+  const initialTarget = visibleTourTarget(step.selector);
+  scrollOnboardingTourTargetIntoView(initialTarget);
+  positionOnboardingTour(initialTarget);
   scheduleOnboardingTourPosition();
   clearTimeout(onboardingTourSettleTimer);
   onboardingTourSettleTimer = setTimeout(() => {
@@ -614,11 +617,7 @@ function scheduleOnboardingTourPosition({ immediate = false } = {}) {
   onboardingTourPositionFrame = requestAnimationFrame(() => {
     const step = ONBOARDING_TOUR_STEPS[onboardingTourStepIndex];
     const target = visibleTourTarget(step.selector);
-    target?.scrollIntoView({
-      behavior: "instant",
-      block: "center",
-      inline: "nearest",
-    });
+    scrollOnboardingTourTargetIntoView(target);
     onboardingTourPositionFrame = requestAnimationFrame(() => {
       positionOnboardingTour(target);
       onboardingTourPositionFrame = null;
@@ -628,6 +627,14 @@ function scheduleOnboardingTourPosition({ immediate = false } = {}) {
         });
       }
     });
+  });
+}
+
+function scrollOnboardingTourTargetIntoView(target) {
+  target?.scrollIntoView({
+    behavior: "instant",
+    block: "center",
+    inline: "nearest",
   });
 }
 

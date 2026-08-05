@@ -329,6 +329,7 @@ function createMainWindow(url) {
     backgroundColor: "#eff5f0",
     icon,
     webPreferences: {
+      backgroundThrottling: !smokeTest,
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.cjs"),
